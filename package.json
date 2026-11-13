@@ -5,6 +5,7 @@
   "license": "MIT",
   "author": "refine",
   "scripts": {
+    "ai-sdlc": "node tools/ai-sdlc/bin/ai-sdlc.mjs",
     "attw": "lerna run attw --scope @refinedev/core",
     "attw:all": "lerna run attw --scope @refinedev/*",
     "biome": "biome",

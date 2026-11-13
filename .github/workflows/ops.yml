@@ -1,0 +1,56 @@
+# Ops loop. Alerts arrive as repository_dispatch (type "alert", payload = alert or Alertmanager webhook)
+# from the alerting system's webhook relay. Verification runs hourly.
+name: ops
+on:
+  repository_dispatch:
+    types: [alert]
+  workflow_dispatch:
+    inputs:
+      payload:
+        description: Alert JSON (for manual runs)
+        required: true
+  schedule:
+    - cron: "17 * * * *"
+permissions:
+  contents: read
+concurrency:
+  group: ops   # serialise: dedup must see the previous alert's ticket
+  cancel-in-progress: false
+env:
+  W: tools/ai-sdlc   # "." in the workflow repo, "tools/ai-sdlc" when installed
+  JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+  JIRA_EMAIL: ${{ secrets.JIRA_OPS_EMAIL }}
+  JIRA_API_TOKEN: ${{ secrets.JIRA_OPS_TOKEN }}
+  JIRA_PROJECT_KEY: ${{ vars.JIRA_PROJECT_KEY }}
+  OPS_METRIC_COMMAND: ${{ vars.OPS_METRIC_COMMAND }}
+jobs:
+  alert:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 50 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: "**/package-lock.json" }
+      - run: npm ci --prefix "$W"
+      - run: npm install -g "@anthropic-ai/claude-code@$(cat "$W/.claude-code-version")"
+      - name: Triage and ticket
+        run: npm --prefix "$W" run ops:alert
+        env:
+          ALERT_PAYLOAD: ${{ github.event_name == 'repository_dispatch' && toJSON(github.event.client_payload) || inputs.payload }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          OPS_LOG_COMMAND: ${{ vars.OPS_LOG_COMMAND }}
+          OPS_RESTART_COMMAND: ${{ vars.OPS_RESTART_COMMAND }}
+          ROLLBACK_COMMAND: ${{ vars.ROLLBACK_COMMAND }}
+          OPS_SCALE_COMMAND: ${{ vars.OPS_SCALE_COMMAND }}
+  verify:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: "**/package-lock.json" }
+      - run: npm ci --prefix "$W"
+      - run: npm --prefix "$W" run ops:verify

@@ -1,0 +1,36 @@
+# Review agent on every PR: a competing model (via gateway) reviews the diff against the IR and ticket.
+# Comments only. The posting code hard-codes event=COMMENT, and branch protection requires a CODEOWNER
+# approval, which a bot token cannot give.
+name: review
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+    branches: [main]
+permissions:
+  contents: read
+  pull-requests: write
+env:
+  W: tools/ai-sdlc   # "." in the workflow repo, "tools/ai-sdlc" when installed
+concurrency:
+  group: review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  review:
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: "**/package-lock.json" }
+      - run: npm ci --prefix "$W"
+      - name: Install pinned Claude Code
+        run: npm install -g "@anthropic-ai/claude-code@$(cat "$W/.claude-code-version")"
+      - name: Review
+        run: npm --prefix "$W" run review -- ${{ github.event.pull_request.number }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ANTHROPIC_BASE_URL: ${{ secrets.REVIEW_BASE_URL }}
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.REVIEW_API_KEY }}
+          REVIEW_MODEL: ${{ vars.REVIEW_MODEL }}

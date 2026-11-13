@@ -1,67 +1,67 @@
-name: Release
-
+# On merge to main: release notes and risk summary (release agent), GitHub release, staged rollout with
+# health checks and automatic rollback, post-deploy watch, the tickets it released moved to
+# jira.stages.released, and ops tickets fixed by this release marked "fix deployed" so the verification
+# window starts.
+name: release
 on:
   push:
-    branches:
-      - main
-
+    branches: [main]
+permissions:
+  contents: write
+env:
+  W: tools/ai-sdlc   # "." in the workflow repo, "tools/ai-sdlc" when installed
+concurrency:
+  group: release
+  cancel-in-progress: false
 jobs:
-  publish:
-    permissions:
-      contents: write
-      id-token: write
-      issues: read
-      pull-requests: write
+  release:
     runs-on: ubuntu-latest
-    concurrency:
-      group: ${{ github.ref }}-stable-release
-      cancel-in-progress: true
-    outputs:
-      published: ${{ steps.changesets.outputs.published }}
-    env:
-      RELEASE_ONLY: ${{ secrets.RELEASE_ONLY }}
+    environment: production
+    timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v3
-        with:
-          token: ${{ secrets.PANKOD_BOT_TOKEN }}
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
       - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: "pnpm"
-      - name: Creating .npmrc
+        with: { node-version: 22, cache: npm, cache-dependency-path: "**/package-lock.json" }
+      - run: npm ci --prefix "$W"
+      - run: npm install -g "@anthropic-ai/claude-code@$(cat "$W/.claude-code-version")"
+      - name: Version
+        id: v
         run: |
-          cat << EOF > "$HOME/.npmrc"
-            //registry.npmjs.org/:_authToken=$NPM_TOKEN
-          EOF
+          echo "version=$(date -u +%Y.%m.%d)-$(git rev-parse --short=8 HEAD)" >> "$GITHUB_OUTPUT"
+          echo "prev=$(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Release notes and risk summary
+        run: npm --prefix "$W" run release -- notes --version "${{ steps.v.outputs.version }}" --from "${{ steps.v.outputs.prev }}"
+        env: { ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}" }
+      - name: GitHub release
+        run: gh release create "${{ steps.v.outputs.version }}" --notes-file ".ai-sdlc/release/${{ steps.v.outputs.version }}.md" --target "$GITHUB_SHA"
+        env: { GH_TOKEN: "${{ github.token }}" }
+      - name: Staged rollout
+        run: npm --prefix "$W" run release -- deploy --version "${{ steps.v.outputs.version }}"
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-      - name: Install Dependencies & Build
-        run: pnpm install
-      - name: Lint
-        run: pnpm lint:ci
-        if: ${{ env.RELEASE_ONLY != 'true' }}
-      - name: Syncpack
-        run: pnpm sp lint
-        if: ${{ env.RELEASE_ONLY != 'true' }}
-      - name: Publint
-        run: pnpm publint:all
-        if: ${{ env.RELEASE_ONLY != 'true' }}
-      - name: Are The Types Wrong
-        run: pnpm attw:all
-        if: ${{ env.RELEASE_ONLY != 'true' }}
-      - name: Test
-        run: pnpm test:all
-        if: ${{ env.RELEASE_ONLY != 'true' }}
-      - name: Create Release Pull Request or Publish to npm
-        id: changesets
-        uses: changesets/action@v1
-        with:
-          version: pnpm version-packages
-          publish: pnpm changeset publish
-          commit: "ci(changesets): version packages"
-          title: "ci(changesets): version packages"
+          DEPLOY_COMMAND: ${{ vars.DEPLOY_COMMAND }}
+          ROLLBACK_COMMAND: ${{ vars.ROLLBACK_COMMAND }}
+          HEALTH_URL: ${{ vars.HEALTH_URL }}
+      - name: Watch window
+        run: npm --prefix "$W" run release -- watch --version "${{ steps.v.outputs.version }}" --minutes "${{ vars.WATCH_MINUTES || 30 }}"
         env:
-          GITHUB_TOKEN: ${{ secrets.PANKOD_BOT_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          ROLLBACK_COMMAND: ${{ vars.ROLLBACK_COMMAND }}
+          HEALTH_URL: ${{ vars.HEALTH_URL }}
+          OPS_METRIC_COMMAND: ${{ vars.OPS_METRIC_COMMAND }}
+      - name: Move tickets released by this release
+        run: |
+          keys=$(git log --format=%B "${{ steps.v.outputs.prev }}..HEAD" | sed -n 's/^Ticket: *\([A-Z][A-Z0-9]*-[0-9]*\).*/\1/p' | sort -u | tr '\n' ' ')
+          npm --prefix "$W" run release -- done $keys --version "${{ steps.v.outputs.version }}"
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_OPS_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_OPS_TOKEN }}
+      - name: Mark ops tickets fixed by this release
+        run: |
+          keys=$(git log --format=%B "${{ steps.v.outputs.prev }}..HEAD" | sed -n 's/^Fixes: *\([A-Z][A-Z0-9]*-[0-9]*\).*/\1/p' | sort -u | tr '\n' ' ')
+          npm --prefix "$W" run release -- fix-deployed $keys --version "${{ steps.v.outputs.version }}"
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_OPS_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_OPS_TOKEN }}
+          JIRA_PROJECT_KEY: ${{ vars.JIRA_PROJECT_KEY }}

@@ -13,3 +13,5 @@ CHANGELOG.md
 
 /.nx/cache
 tmp
+tools/ai-sdlc
+.ai-sdlc

@@ -1,0 +1,58 @@
+# Deterministic gates on every PR in a client repository. Agents read these results as facts.
+# Branch protection requires: gates / checks, gates / secrets, gates / sast (scripts/branch-protection.sh).
+name: gates
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+env:
+  W: tools/ai-sdlc   # where the workflow lives: "." in the workflow repo, "tools/ai-sdlc" when installed
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: "**/package-lock.json" }
+      - run: npm ci
+      - run: '[ "$W" = "." ] || npm ci --prefix "$W"'
+      - name: Full checks (type check, lint, tests, build, guards)
+        run: node "$W/checks/hooks/run-checks.mjs" full
+      - name: Contract check (routes match contracts)
+        run: node "$W/checks/hooks/run-checks.mjs" contract
+      - name: No open owed.yaml entries
+        run: node "$W/checks/guards/owed-closed.mjs"
+      - name: Docs referenced by agents exist
+        run: node "$W/checks/guards/docs-refs.mjs"
+      - name: No secrets in changed files
+        run: node "$W/checks/guards/no-secrets.mjs"
+        env: { BASE_REF: "origin/${{ github.base_ref }}" }
+      - name: IR still matches its ticket (sealed bar)
+        run: '"$W/node_modules/.bin/tsx" "$W/checks/guards/ir-drift.ts"'
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_READ_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_READ_TOKEN }}
+      - name: Mutation (full catalogue on changed lines)
+        run: npm --prefix "$W" run mutation -- --base origin/${{ github.base_ref }}
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: gitleaks
+        run: |
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.18.4 \
+            detect --source /repo --log-opts="origin/${{ github.base_ref }}..HEAD" --redact --exit-code 1
+  sast:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with: { languages: javascript-typescript }
+      - uses: github/codeql-action/analyze@v3
