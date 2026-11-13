@@ -1,6 +1,6 @@
 {
   "version": "0.1.0",
-  "installed_at": "2026-11-13T19:05:04.654Z",
+  "installed_at": "2026-11-13T19:19:10.149Z",
   "files": [
     "tools/ai-sdlc/",
     ".claude/agents/",
@@ -14,7 +14,6 @@
     "docs/TELEMETRY.md",
     "docs/ARCHITECTURE.md",
     "docs/IR.md",
-    ".gitignore (un-ignored the workflow's .claude/ files)",
     ".github/workflows/gates.yml",
     ".github/workflows/review.yml",
     ".github/workflows/release.yml",
