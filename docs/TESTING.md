@@ -66,6 +66,14 @@ specs run the real command (e.g. as a subprocess) on the repo's fixtures and che
 walk keeps running with the suite. Walk specs live in the stack profile's walk folder (`scope.walk`; Python:
 `tests/walk/`). When `checks.integration` is empty, QA runs only the contract check and says so in its report.
 
+## escalation
+
+A unit that fails `attemptsPerUnit` attempts on its own model, then `escalationModel.attempts` on the stronger one,
+escalates to a person with a report of every attempt (`.ai-sdlc/reports/<T>/<unit>-escalation.md`). A setup problem
+(a gate whose own tool cannot run) escalates at once. The developer finishes the unit on its branch, commits, and runs
+`ai-sdlc gates <T> <unit>`: the same gates run on their change with no agent. If they pass, the unit merges and the PR
+says a developer finished it; if not, it escalates again with the new report.
+
 ## contract-tests
 
 Both sides test against the contract, never against each other's code. Helpers in

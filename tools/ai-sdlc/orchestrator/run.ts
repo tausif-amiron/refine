@@ -25,6 +25,11 @@ export interface BuildOptions {
   runId?: string;
   workflowRoot?: string;
   log?: (msg: string) => void;
+  /**
+   * An escalated unit a developer finished on its branch: run the same gates on the branch as it is, with no agent.
+   * Pass: the unit merges like any other. Fail: it escalates again at once (there is no one to retry).
+   */
+  takeOver?: string;
 }
 
 export interface BuildResult {
@@ -81,6 +86,15 @@ export async function buildTicket(o: BuildOptions): Promise<BuildResult> {
   if (!gate.pass) throw new Error(`Stage 1 gate failed; no dev agent starts until contracts exist:\n${gate.output}`);
 
   const state = loadState(root, plan);
+  if (o.takeOver) {
+    const st = state.units[o.takeOver];
+    if (!st) throw new Error(`No unit ${o.takeOver} in the plan for ${ticket}.`);
+    if (st.status !== "escalated") throw new Error(`${o.takeOver} is ${st.status}, not escalated; only an escalated unit is taken over by a developer.`);
+    const branch = unitBranch(tBranch, o.takeOver);
+    if (git(root, `rev-parse --verify --quiet ${JSON.stringify(branch)}`).code !== 0) throw new Error(`The unit branch ${branch} does not exist.`);
+    if (git(root, `merge-base --is-ancestor HEAD ${JSON.stringify(branch)}`).code !== 0) throw new Error(`${branch} is not based on the current ${tBranch}; merge ${tBranch} into it first.`);
+    st.status = "pending";
+  }
   const owedPath = join(root, "owed.yaml");
   const known = new Set(plan.units.map((u) => u.id));
   const buildUnits = plan.units.filter((u) => u.kind !== "walk");
@@ -106,16 +120,19 @@ export async function buildTicket(o: BuildOptions): Promise<BuildResult> {
     const base = headCommit(root);
     const branch = unitBranch(tBranch, unit.id);
     const dir = worktreeDir(root, unit.id);
-    addWorktree(root, dir, branch, base, cfg.worktreeLinks ?? []);
+    const byDeveloper = unit.id === o.takeOver;
+    // A developer's take-over keeps the branch as they left it; the gates still diff against the ticket's base.
+    const start = byDeveloper ? git(root, `rev-parse ${JSON.stringify(branch)}`).stdout.trim() : base;
+    addWorktree(root, dir, branch, start, cfg.worktreeLinks ?? []);
     const { markdown, json } = assembleBrief({ ir, plan, unit, cfg, root, runId, attempt: st.failures + 1, baseCommit: base, owed: loadOwed(owedPath), fixReport: st.fixReport });
     writeFileEnsured(join(dir, ".ai-sdlc", "brief.json"), JSON.stringify(json, null, 2) + "\n");
     writeFileEnsured(join(dir, ".ai-sdlc", "brief.md"), markdown);
     // Attempts past attemptsPerUnit run on the escalation model (a stronger one) before a person takes over.
     const extra = cfg.escalationModel?.attempts ?? 0;
-    const model = st.failures >= cfg.attemptsPerUnit && cfg.escalationModel ? cfg.escalationModel.model : unit.model;
-    log(`→ ${unit.id} (${unit.agent}, ${model}, attempt ${st.failures + 1}/${cfg.attemptsPerUnit + extra})`);
+    const model = byDeveloper ? "developer" : st.failures >= cfg.attemptsPerUnit && cfg.escalationModel ? cfg.escalationModel.model : unit.model;
+    log(byDeveloper ? `→ ${unit.id} (finished by a developer: running the gates on ${branch})` : `→ ${unit.id} (${unit.agent}, ${model}, attempt ${st.failures + 1}/${cfg.attemptsPerUnit + extra})`);
     const started = new Date().toISOString();
-    const res = await runner.run({
+    const res: AgentRunResult = byDeveloper ? { ok: true, text: "Finished by a developer on the unit branch (ai-sdlc gates).", cost_usd: 0, tokens_in: 0, tokens_out: 0, cost_source: "unknown" } : await runner.run({
       agent: unit.agent, prompt: markdown, cwd: dir, model, budgetUsd: cfg.budgetUsdPerRun,
       env: { AI_SDLC_RUN_ID: runId, AI_SDLC_TICKET: ticket, AI_SDLC_UNIT: unit.id, AI_SDLC_AGENT: unit.agent, AI_SDLC_ATTEMPT: String(st.failures + 1), AI_SDLC_BRIEF: join(dir, ".ai-sdlc", "brief.json"), AI_SDLC_TELEMETRY_FILE: join(root, cfg.telemetry.file) },
     });
@@ -163,6 +180,7 @@ export async function buildTicket(o: BuildOptions): Promise<BuildResult> {
         log(`… ${unit.id} blocked on ${waiting.map((w) => w.to).join(", ")}`);
       } else {
         st.status = "passed";
+        if (unit.id === o.takeOver) st.finishedBy = "developer";
         status = "pass";
         st.gates = gates.map((g) => ({ name: g.name, pass: g.pass, output: g.output.slice(0, 1500) }));
         log(`✓ ${unit.id}`);
@@ -190,7 +208,8 @@ export async function buildTicket(o: BuildOptions): Promise<BuildResult> {
       log(`✗ ${unit.id} failed: ${gates.filter((g) => !g.pass).map((g) => g.name).join(", ")}`);
       // A gate whose own tool cannot run fails every attempt the same way: escalate now, as a setup problem.
       const setup = gates.find((g) => !g.pass && g.setup);
-      if (capped) { await escalate(unit, st, cfg.escalationModel ? `${cfg.attemptsPerUnit} attempts on ${unit.model} and ${cfg.escalationModel.attempts} on ${cfg.escalationModel.model} failed` : `${cfg.attemptsPerUnit} attempts failed`); status = "escalated"; }
+      if (unit.id === o.takeOver) { await escalate(unit, st, "the developer's change on the unit branch still fails the gates (see the report)"); status = "escalated"; }
+      else if (capped) { await escalate(unit, st, cfg.escalationModel ? `${cfg.attemptsPerUnit} attempts on ${unit.model} and ${cfg.escalationModel.attempts} on ${cfg.escalationModel.model} failed` : `${cfg.attemptsPerUnit} attempts failed`); status = "escalated"; }
       else if (setup) { await escalate(unit, st, `setup problem: the ${setup.name} gate could not run its own tool (see the report). Fix the configuration, then reset the unit; more attempts would fail the same way`); status = "escalated"; }
     }
     await emit(root, {

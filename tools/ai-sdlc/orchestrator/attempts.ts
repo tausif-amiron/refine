@@ -19,6 +19,8 @@ export interface UnitState {
   escalation?: string;     // path to escalation report
   /** Gate results of the attempt that passed (facts QA and the PR can cite). */
   gates?: { name: string; pass: boolean; output: string }[];
+  /** Set when a developer finished the unit on its branch after an escalation (`ai-sdlc gates`). */
+  finishedBy?: "developer";
 }
 
 export interface TicketState {
