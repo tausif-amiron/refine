@@ -4,6 +4,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Config } from "./config.ts";
+import { ghFor } from "./pr.ts";
 import { modelFor } from "./config.ts";
 import type { AgentRunner } from "./runner.ts";
 import { emit } from "./telemetry.ts";
@@ -92,11 +93,11 @@ export function buildReviewPayload(out: ReviewOutput, diffText: string, commitId
 }
 
 export async function reviewPr(o: { root: string; pr: string; cfg: Config; runner: AgentRunner; post?: boolean }): Promise<{ payload: ReturnType<typeof buildReviewPayload> }> {
-  const view = sh(`gh pr view ${o.pr} --json headRefName,headRefOid,title,body,files`, { cwd: o.root });
+  const view = ghFor(o.root, o.cfg)(`pr view ${o.pr} --json headRefName,headRefOid,title,body,files`);
   if (view.code !== 0) throw new Error(`gh pr view failed: ${view.stderr}`);
   const pr = JSON.parse(view.stdout) as { headRefName: string; headRefOid: string; title: string; body: string; files: { path: string }[] };
-  const diffText = sh(`gh pr diff ${o.pr}`, { cwd: o.root }).stdout;
-  const checks = sh(`gh pr checks ${o.pr}`, { cwd: o.root }).stdout;
+  const diffText = ghFor(o.root, o.cfg)(`pr diff ${o.pr}`).stdout;
+  const checks = ghFor(o.root, o.cfg)(`pr checks ${o.pr}`).stdout;
   const ticket = pr.headRefName.match(/([A-Z][A-Z0-9]+-\d+)/)?.[1];
   const irFile = ticket ? join(o.root, "ir", `${ticket}.ir.json`) : "";
   const ir = irFile && existsSync(irFile) ? (JSON.parse(readFileSync(irFile, "utf8")) as IR) : undefined;
@@ -112,7 +113,7 @@ export async function reviewPr(o: { root: string; pr: string; cfg: Config; runne
   const payload = buildReviewPayload(out, diffText, pr.headRefOid, riskTags(diffText));
   await emit(o.root, { event: "run", run_id: runId, ticket, agent: "review", started_at: started, ended_at: new Date().toISOString(), status: "info", tokens_in: res.tokens_in, tokens_out: res.tokens_out, cost_usd: res.cost_usd, cost_source: res.cost_source, output_ref: `pr:${o.pr}` }, o.cfg.telemetry.file);
   if (o.post !== false) {
-    const repo = sh(`gh repo view --json nameWithOwner -q .nameWithOwner`, { cwd: o.root }).stdout.trim();
+    const repo = o.cfg.pr?.repo || sh(`gh repo view --json nameWithOwner -q .nameWithOwner`, { cwd: o.root }).stdout.trim();
     const r = sh(`gh api -X POST repos/${repo}/pulls/${o.pr}/reviews --input -`, { cwd: o.root, input: JSON.stringify(payload) });
     if (r.code !== 0) throw new Error(`posting review failed: ${r.stderr}`);
   }

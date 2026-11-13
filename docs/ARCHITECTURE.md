@@ -97,6 +97,12 @@ ticket's workflow cannot reach from where it is, leaves the ticket where it is a
 fails the step. Like comments, only tickets read from Jira move, except `release done`, which runs in CI and
 moves the keys of this repo's project (`ticketPrefix`) named in the released commits.
 
+## pull-requests-from-a-fork
+
+When you cannot push to `origin` (an open-source project), set `pr.remote` to your fork's git remote and `pr.repo` to
+the fork (`owner/name`). `pr` then pushes there and every `gh` call (`pr`, `review`, `learn`) names that repo, so
+nothing opens on the upstream project unless `pr.repo` says so. Defaults: `origin`, and gh's own choice of repo.
+
 ## paperclip
 
 Paperclip (self-hosted agent control plane) is the dashboard and scheduler around the workflow; it does not replace

@@ -172,5 +172,9 @@
   },
   "telemetry": {
     "file": ".ai-sdlc/telemetry/events.jsonl"
+  },
+  "pr": {
+    "remote": "fork",
+    "repo": "tausif-amiron/refine"
   }
 }

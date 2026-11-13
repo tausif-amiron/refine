@@ -209,7 +209,7 @@ async function main() {
       return;
     }
     case "learn": {
-      out(`Proposals: ${learn(root, flags.days ? Number(flags.days) : 30)}`);
+      out(`Proposals: ${learn(root, flags.days ? Number(flags.days) : 30, cfg.pr?.repo)}`);
       return;
     }
     default:
