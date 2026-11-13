@@ -177,7 +177,8 @@ export function attemptLines(state: TicketState, plan: Plan): string[] {
       const where = lines.find((l) => /^\s+\S+:\d+( \[[\w:-]+\])?$/.test(l))?.trim();
       out.push(`\`${u.id}\` attempt ${h.attempt} failed ${failed.length ? failed.join(", ") : "QA"}: ${sentence}${where ? ` (${where})` : ""}`);
     }
-    if (st?.history.length && st.status === "passed") out.push(`\`${u.id}\` passed on attempt ${st.history.length + 1}.`);
+    if (st?.status === "passed" && st.finishedBy === "developer") out.push(`\`${u.id}\` finished by a developer after ${st.history.length} failed attempt(s); the same gates passed on their change.`);
+    else if (st?.history.length && st.status === "passed") out.push(`\`${u.id}\` passed on attempt ${st.history.length + 1}.`);
   }
   return out;
 }

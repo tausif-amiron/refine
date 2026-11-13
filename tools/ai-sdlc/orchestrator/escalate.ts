@@ -2,6 +2,7 @@
 // full report: what the unit was, every attempt's gate results, and where the work is.
 import { join } from "node:path";
 import type { Config } from "./config.ts";
+import { cliHint } from "./config.ts";
 import { Jira } from "./jira.ts";
 import { moveTicket } from "./jira-sync.ts";
 import { emit } from "./telemetry.ts";
@@ -30,7 +31,7 @@ export function escalationMarkdown(e: EscalationInput): string {
     `**Run:** ${e.runId}`,
     e.branch ? `**Work in progress:** branch \`${e.branch}\`` : "",
     ``,
-    `A developer takes over this unit. Each attempt below lists the checks that failed; they are facts from the check scripts.`,
+    `A developer takes over this unit: finish it on its branch (${e.branch ?? "the unit branch"}), commit, then run \`${cliHint(`gates ${e.ticket} ${e.unit}`, e.root)}\`. The same gates run on the change, with no agent; when they pass, the unit merges and QA can run. Each attempt below lists the checks that failed; they are facts from the check scripts.`,
     ``,
     ...e.attempts.flatMap((a) => [
       `## Attempt ${a.attempt}`,
