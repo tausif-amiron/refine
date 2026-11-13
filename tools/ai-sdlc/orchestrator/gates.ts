@@ -236,7 +236,15 @@ export function seenRedVerdict(ctx: GateContext, added: TestOutcome[], preexisti
   const onlyPins = implChanged && pins.length > 0 && regular.length === 0;
   const note = preexisting ? ` (${preexisting} tests that already existed at the base commit are not required to be red)` : "";
   const problems: string[] = [];
-  if (neverRed.length) problems.push(`These tests never failed, neither without the implementation nor under any mutant, so they prove nothing yet (docs/TESTING.md#seen-red)${note}:\n${neverRed.map((t) => `  ${t.file} › ${t.name}`).join("\n")}`);
+  if (neverRed.length) {
+    // Without this, an agent deletes the test, and the mutation gate then fails on the now-untested line (RT-2).
+    const pattern = ctx.cfg.tests.pinPattern ?? profileForFile(neverRed[0].file)?.tests.pinPattern;
+    const pinName = pattern?.replace(/^\(\^\|[^)]*\)/, "").replace(/\\/g, "");
+    const hint = pinName
+      ? `\nIf a test guards behaviour the ticket keeps unchanged (it passes before and after by design), keep it and make it a pin: put "${pinName}" in its name. Pins must pass both without and with the change. Otherwise, make the test fail without your change.`
+      : "";
+    problems.push(`These tests never failed, neither without the implementation nor under any mutant, so they prove nothing yet (docs/TESTING.md#seen-red)${note}:\n${neverRed.map((t) => `  ${t.file} › ${t.name}`).join("\n")}${hint}`);
+  }
   if (badPins.length) problems.push(`These are named as pins but do not pass without the change, so they are not guarding unchanged behaviour. Rename them as ordinary tests, or make them test only what must stay the same:\n${badPins.map((t) => `  ${t.file} › ${t.name} (without the change: ${atBase?.get(testKey(t)) ?? "not run"})`).join("\n")}`);
   if (onlyPins) problems.push("The implementation changed, but every new test is a pin. Add at least one test of the new behaviour that fails without the change.");
   const pinNote = pins.length ? `; ${pins.length} pins pass before and after the change` : "";
