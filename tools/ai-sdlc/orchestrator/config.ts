@@ -48,6 +48,8 @@ export interface Config {
     /** Status the pipeline moves a ticket to at each stage. Unset or "" = the ticket stays where it is. */
     stages?: { escalated?: string; inReview?: string; released?: string };
   };
+  /** After a unit's own model fails attemptsPerUnit times: `attempts` more on this model before a person takes over. */
+  escalationModel?: { model: string; attempts: number };
   /** LLM gateway (LiteLLM) in front of agent runs; see orchestrator/gateway.ts. Empty url = direct to the provider. */
   gateway?: { url: string; keys?: Record<string, string>; headers?: Record<string, string> };
   /** Paperclip control plane, for `paperclip-sync` (runs get their own settings from Paperclip); see orchestrator/paperclip.ts. */

@@ -5,7 +5,7 @@ Claude Code. **A model does the work, code decides pass or fail, a person approv
 
 ```
 Jira ticket → extract (IR, sealed criteria) → plan (units + contracts) → dev agents in worktrees
-  → gates (scope · checks · tests changed · seen-red · mutation · owed.yaml) → 3 attempts, then escalate
+  → gates (scope · checks · tests changed · seen-red · mutation · owed.yaml) → 3 attempts, then 1 on a stronger model (escalationModel), then escalate to a person
   → QA (integration + walk, fix briefs) → blind score → PR → review agent (comments only) → CI gates
   → human approval → release (notes, staged rollout, watch) → ops (dedup ticket, verify fix)
 ```

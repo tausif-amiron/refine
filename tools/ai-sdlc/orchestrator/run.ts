@@ -62,7 +62,7 @@ export function readinessIssues(ir: IR): string[] {
   return issues;
 }
 
-interface Attempt { unit: Unit; st: UnitState; attemptNo: number; dir: string; branch: string; base: string; res: AgentRunResult; gates: GateResult[]; editedOwed: string; started: string; ended: string }
+interface Attempt { unit: Unit; st: UnitState; attemptNo: number; model: string; dir: string; branch: string; base: string; res: AgentRunResult; gates: GateResult[]; editedOwed: string; started: string; ended: string }
 
 export async function buildTicket(o: BuildOptions): Promise<BuildResult> {
   const { root, ticket, cfg, runner } = o;
@@ -110,10 +110,13 @@ export async function buildTicket(o: BuildOptions): Promise<BuildResult> {
     const { markdown, json } = assembleBrief({ ir, plan, unit, cfg, root, runId, attempt: st.failures + 1, baseCommit: base, owed: loadOwed(owedPath), fixReport: st.fixReport });
     writeFileEnsured(join(dir, ".ai-sdlc", "brief.json"), JSON.stringify(json, null, 2) + "\n");
     writeFileEnsured(join(dir, ".ai-sdlc", "brief.md"), markdown);
-    log(`→ ${unit.id} (${unit.agent}, attempt ${st.failures + 1}/${cfg.attemptsPerUnit})`);
+    // Attempts past attemptsPerUnit run on the escalation model (a stronger one) before a person takes over.
+    const extra = cfg.escalationModel?.attempts ?? 0;
+    const model = st.failures >= cfg.attemptsPerUnit && cfg.escalationModel ? cfg.escalationModel.model : unit.model;
+    log(`→ ${unit.id} (${unit.agent}, ${model}, attempt ${st.failures + 1}/${cfg.attemptsPerUnit + extra})`);
     const started = new Date().toISOString();
     const res = await runner.run({
-      agent: unit.agent, prompt: markdown, cwd: dir, model: unit.model, budgetUsd: cfg.budgetUsdPerRun,
+      agent: unit.agent, prompt: markdown, cwd: dir, model, budgetUsd: cfg.budgetUsdPerRun,
       env: { AI_SDLC_RUN_ID: runId, AI_SDLC_TICKET: ticket, AI_SDLC_UNIT: unit.id, AI_SDLC_AGENT: unit.agent, AI_SDLC_ATTEMPT: String(st.failures + 1), AI_SDLC_BRIEF: join(dir, ".ai-sdlc", "brief.json"), AI_SDLC_TELEMETRY_FILE: join(root, cfg.telemetry.file) },
     });
     state.cost_usd += res.cost_usd;
@@ -125,7 +128,7 @@ export async function buildTicket(o: BuildOptions): Promise<BuildResult> {
     const gates = res.ok
       ? runUnitGates({ unit, brief: json, cwd: dir, cfg, ledgerPath, workflowRoot })
       : [{ name: "agent-run", pass: false, output: `The agent run did not complete: ${res.text.slice(0, 3000)}` }];
-    return { unit, st, attemptNo: st.failures + 1, dir, branch, base, res, gates, editedOwed, started, ended: new Date().toISOString() };
+    return { unit, st, attemptNo: st.failures + 1, model, dir, branch, base, res, gates, editedOwed, started, ended: new Date().toISOString() };
   };
 
   const finalize = async (a: Attempt) => {
@@ -182,15 +185,16 @@ export async function buildTicket(o: BuildOptions): Promise<BuildResult> {
       }
     } else {
       const report = gateReport(gates.filter((g) => !g.pass));
-      const capped = recordFailure(st, { attempt: a.attemptNo, run_id: runId, report, agentSummary: a.res.text.slice(0, 2000), cost_usd: a.res.cost_usd }, cfg.attemptsPerUnit);
+      const cap = cfg.attemptsPerUnit + (cfg.escalationModel?.attempts ?? 0);
+      const capped = recordFailure(st, { attempt: a.attemptNo, run_id: runId, report, agentSummary: a.res.text.slice(0, 2000), cost_usd: a.res.cost_usd }, cap);
       log(`✗ ${unit.id} failed: ${gates.filter((g) => !g.pass).map((g) => g.name).join(", ")}`);
       // A gate whose own tool cannot run fails every attempt the same way: escalate now, as a setup problem.
       const setup = gates.find((g) => !g.pass && g.setup);
-      if (capped) { await escalate(unit, st, `${cfg.attemptsPerUnit} attempts failed`); status = "escalated"; }
+      if (capped) { await escalate(unit, st, cfg.escalationModel ? `${cfg.attemptsPerUnit} attempts on ${unit.model} and ${cfg.escalationModel.attempts} on ${cfg.escalationModel.model} failed` : `${cfg.attemptsPerUnit} attempts failed`); status = "escalated"; }
       else if (setup) { await escalate(unit, st, `setup problem: the ${setup.name} gate could not run its own tool (see the report). Fix the configuration, then reset the unit; more attempts would fail the same way`); status = "escalated"; }
     }
     await emit(root, {
-      event: "run", run_id: runId, ticket, unit: unit.id, agent: unit.agent, model: unit.model, attempt: a.attemptNo,
+      event: "run", run_id: runId, ticket, unit: unit.id, agent: unit.agent, model: a.model, attempt: a.attemptNo,
       started_at: a.started, ended_at: a.ended, status, tokens_in: a.res.tokens_in, tokens_out: a.res.tokens_out, cost_usd: a.res.cost_usd, cost_source: a.res.cost_source,
       output_ref: `branch:${a.branch}`, detail: { gates: gates.map((g) => ({ name: g.name, pass: g.pass })) },
     }, cfg.telemetry.file);
@@ -199,7 +203,7 @@ export async function buildTicket(o: BuildOptions): Promise<BuildResult> {
   };
 
   // Main loop.
-  for (let guard = 0; guard < buildUnits.length * (cfg.attemptsPerUnit + 1) * 3; guard++) {
+  for (let guard = 0; guard < buildUnits.length * (cfg.attemptsPerUnit + (cfg.escalationModel?.attempts ?? 0) + 1) * 3; guard++) {
     if (state.cost_usd >= cfg.budgetUsdPerTicket) {
       for (const u of buildUnits) if (state.units[u.id].status === "pending" || state.units[u.id].status === "blocked") await escalate(u, state.units[u.id], `ticket budget of $${cfg.budgetUsdPerTicket} reached ($${state.cost_usd.toFixed(2)} spent)`);
       break;
