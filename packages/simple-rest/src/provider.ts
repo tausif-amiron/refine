@@ -16,10 +16,7 @@ type MethodTypesWithBody = "post" | "put" | "patch";
 const getTotal = (headerValue: unknown, data: unknown): number => {
   const fallback = Array.isArray(data) ? data.length : 0;
 
-  if (headerValue === undefined || headerValue === null) {
-    return fallback;
-  }
-
+  // A missing header (undefined or null) becomes "undefined" or "null" here, which is not a number, so it falls back below.
   const raw = String(headerValue).trim();
   if (raw === "") {
     return fallback;
