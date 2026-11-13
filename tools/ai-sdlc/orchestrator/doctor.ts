@@ -37,6 +37,11 @@ export async function doctor(root: string, cfg: Config, deps: DoctorDeps, opts: 
   if (!existsSync(join(root, "ai-sdlc.config.json"))) add("Workflow installed", "fail", `no ai-sdlc.config.json in ${root}`, "Install the workflow: node <workflow>/scripts/install.mjs <repo>");
   else add("Workflow installed", "pass", "ai-sdlc.config.json found");
 
+  // Unit worktrees are checkouts: agents only get permissions and hooks that are committed.
+  const tracked = deps.run("git", ["ls-files", ".claude/settings.json", ".claude/agents"], root).stdout.split("\n").filter(Boolean);
+  if (tracked.includes(".claude/settings.json") && tracked.some((f) => f.startsWith(".claude/agents/"))) add("Claude Code files", "pass", `.claude/settings.json and ${tracked.length - 1} agent definitions are committed`);
+  else add("Claude Code files", "fail", ".claude/settings.json or .claude/agents/ is not committed, so agents in unit worktrees run with no permissions (every edit is denied) and no scope hooks", "Check .gitignore (re-run the installer with --update, which un-ignores them), then commit .claude/settings.json, agents, skills, commands and rules");
+
   const remote = deps.run("git", ["remote", "get-url", "origin"], root);
   if (remote.code === 0) add("Git remote", "pass", remote.stdout.trim());
   else add("Git remote", "warn", "no origin remote, so pr has nowhere to push", "git remote add origin <url>");
