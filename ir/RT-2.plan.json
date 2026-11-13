@@ -1,0 +1,60 @@
+{
+  "contracts": [],
+  "ir_hash": "sha256:e2577e7bad99985d231f22eb964917bb556c23306eb58506ba977783d077b81b",
+  "schema": "ai-sdlc.plan.v1",
+  "ticket": "RT-2",
+  "units": [
+    {
+      "agent": "dev-module",
+      "consumes": [],
+      "dependsOn": [],
+      "exposes": [],
+      "id": "unit-module-simple-rest-get-list-total",
+      "ir": {
+        "entities": [],
+        "modules": [
+          "simple-rest getList total"
+        ],
+        "screens": [],
+        "services": []
+      },
+      "kind": "module",
+      "model": "sonnet",
+      "name": "simple-rest getList total",
+      "scope": [
+        ".changeset/simple-rest-get-list-total.md",
+        "owed.yaml",
+        "packages/simple-rest/README.md",
+        "packages/simple-rest/src/provider.ts",
+        "packages/simple-rest/test/getList/index.mock.ts",
+        "packages/simple-rest/test/getList/index.spec.ts"
+      ],
+      "slug": "simple-rest-get-list-total"
+    },
+    {
+      "agent": "qa",
+      "consumes": [],
+      "dependsOn": [
+        "unit-module-simple-rest-get-list-total"
+      ],
+      "exposes": [],
+      "id": "unit-walk",
+      "ir": {
+        "entities": [],
+        "modules": [
+          "simple-rest getList total"
+        ],
+        "screens": [],
+        "services": []
+      },
+      "kind": "walk",
+      "model": "sonnet",
+      "name": "walk",
+      "scope": [
+        "packages/simple-rest/test/walk/**",
+        "owed.yaml"
+      ],
+      "slug": "walk"
+    }
+  ]
+}
