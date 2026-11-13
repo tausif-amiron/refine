@@ -143,7 +143,7 @@ answers and accepts each key.
 ## configuration
 
 `ai-sdlc.config.json` holds per-repo settings: scope templates per unit kind (`{name}` is the kebab-case IR
-name), test command, check commands, attempt and budget caps, models per agent, Jira statuses, release
+name), test command, check commands, attempt and budget caps, models per agent, the escalation model (`escalationModel`: after `attemptsPerUnit` failures, `attempts` more on a stronger model, by default one on opus, before a person; setup problems go straight to a person), Jira statuses, release
 stages and thresholds, ops pre-approved actions. Values like `${HEALTH_URL}` are read from the environment;
 `tools/ai-sdlc` is the workflow's folder relative to the repo (`.` here, `tools/ai-sdlc` when installed).
 

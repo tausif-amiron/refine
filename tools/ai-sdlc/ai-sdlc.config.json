@@ -6,6 +6,10 @@
   "ticketPrefix": "JIRA",
   "branchPrefix": "feature/",
   "attemptsPerUnit": 3,
+  "escalationModel": {
+    "model": "opus",
+    "attempts": 1
+  },
   "budgetUsdPerTicket": 40,
   "budgetUsdPerRun": 5,
   "concurrency": 2,
