@@ -52,6 +52,8 @@ export interface Config {
   escalationModel?: { model: string; attempts: number };
   /** LLM gateway (LiteLLM) in front of agent runs; see orchestrator/gateway.ts. Empty url = direct to the provider. */
   gateway?: { url: string; keys?: Record<string, string>; headers?: Record<string, string> };
+  /** Where `pr` pushes (git remote, default origin) and the GitHub repo (owner/name) its PRs open on (default: gh's). */
+  pr?: { remote?: string; repo?: string };
   /** Paperclip control plane, for `paperclip-sync` (runs get their own settings from Paperclip); see orchestrator/paperclip.ts. */
   paperclip?: { url: string; companyId: string; agentId: string; project?: string };
   release: { stages: number[]; healthUrl: string; deployCommand: string; rollbackCommand: string; watchMinutes: number; errorRateThreshold: number };

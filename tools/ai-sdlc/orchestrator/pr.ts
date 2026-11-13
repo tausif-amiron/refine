@@ -114,7 +114,14 @@ export interface StackInfo {
   recordedBase?: string;         // where the workflow recorded `base` was cut from
 }
 
-type Gh = (args: string) => { code: number; stdout: string };
+type Gh = (args: string) => { code: number; stdout: string; stderr?: string };
+
+/** gh for this repo's PRs: names `pr.repo` on every call when it is set, so a fork setup never reaches upstream. */
+export function ghFor(root: string, cfg: Config, gh?: Gh): Gh {
+  const run: Gh = gh ?? ((a) => sh(`gh ${a}`, { cwd: root }));
+  const repo = cfg.pr?.repo;
+  return repo ? (a) => run(`${a} --repo '${repo}'`) : run;
+}
 
 /**
  * Is this PR stacked: does its base branch have a PR of its own (or was it cut by the workflow from another branch)?
@@ -233,7 +240,8 @@ export function openPr(o: { root: string; ticket: string; cfg: Config; base?: st
   const qaSummary = existsSync(qaPath) ? `QA passed. Full report attached as a PR comment (from \`.ai-sdlc/reports/${ticket}/qa.md\`).` : "QA report missing.";
   const branch = ticketBranch(cfg.branchPrefix, ticket);
   const base = o.base ?? baseBranchOf(root, branch);
-  const stack = stackInfo(root, base, o.gh);
+  const gh = ghFor(root, cfg, o.gh);
+  const stack = stackInfo(root, base, gh);
   if (stack?.parent?.state === "MERGED") {
     throw new Error(`\`${base}\` was already merged into \`${stack.parent.base}\` by #${stack.parent.number}. A PR into it now would never reach \`${stack.parent.base}\`. Target it directly: pr ${ticket} --base ${stack.parent.base}`);
   }
@@ -277,19 +285,20 @@ export function openPr(o: { root: string; ticket: string; cfg: Config; base?: st
   const bodyFile = join(root, ".ai-sdlc", "reports", ticket, "pr-body.md");
   writeFileEnsured(bodyFile, body);
   if (o.dryRun) return { body, base, stack };
-  const push = git(root, `push -u origin '${branch}'`);
-  if (push.code !== 0) throw new Error(`git push failed:\n${push.stderr}`);
-  const existing = sh(`gh pr view '${branch}' --json url -q .url`, { cwd: root });
+  const remote = cfg.pr?.remote || "origin";
+  const push = git(root, `push -u '${remote}' '${branch}'`);
+  if (push.code !== 0) throw new Error(`git push to ${remote} failed:\n${push.stderr}`);
+  const existing = gh(`pr view '${branch}' --json url -q .url`);
   let url: string;
   if (existing.code === 0 && existing.stdout.trim()) {
     url = existing.stdout.trim();
-    sh(`gh pr edit '${branch}' --body-file '${bodyFile}'`, { cwd: root });
+    gh(`pr edit '${branch}' --body-file '${bodyFile}'`);
   } else {
-    const r = sh(`gh pr create --base '${base}' --head '${branch}' --title '${`${ticket}: ${ir.title}`.replace(/'/g, "")}' --body-file '${bodyFile}'`, { cwd: root });
-    if (r.code !== 0) throw new Error(`gh pr create failed:\n${r.stderr}`);
+    const r = gh(`pr create --base '${base}' --head '${branch}' --title '${`${ticket}: ${ir.title}`.replace(/'/g, "")}' --body-file '${bodyFile}'`);
+    if (r.code !== 0) throw new Error(`gh pr create failed:\n${r.stderr ?? r.stdout}`);
     url = r.stdout.trim().split("\n").pop()!;
   }
-  if (existsSync(qaPath)) sh(`gh pr comment '${branch}' --body-file '${qaPath}'`, { cwd: root });
+  if (existsSync(qaPath)) gh(`pr comment '${branch}' --body-file '${qaPath}'`);
   // Recorded so later steps (paperclip-run) know the PR exists without asking GitHub.
   writeFileEnsured(join(root, ".ai-sdlc", "reports", ticket, "pr.json"), JSON.stringify({ url, base }, null, 2) + "\n");
   return { url, body, base, stack };
@@ -298,9 +307,10 @@ export function openPr(o: { root: string; ticket: string; cfg: Config; base?: st
 /** After score:finalize, put the score in the PR description. */
 export function updatePrScore(root: string, ticket: string, cfg: Config): boolean {
   const branch = ticketBranch(cfg.branchPrefix, ticket);
-  const view = sh(`gh pr view '${branch}' --json body -q .body`, { cwd: root });
+  const gh = ghFor(root, cfg);
+  const view = gh(`pr view '${branch}' --json body -q .body`);
   if (view.code !== 0) return false;
   const bodyFile = join(root, ".ai-sdlc", "reports", ticket, "pr-body.md");
   writeFileEnsured(bodyFile, replaceScore(view.stdout, scoreSection(root, ticket)));
-  return sh(`gh pr edit '${branch}' --body-file '${bodyFile}'`, { cwd: root }).code === 0;
+  return gh(`pr edit '${branch}' --body-file '${bodyFile}'`).code === 0;
 }

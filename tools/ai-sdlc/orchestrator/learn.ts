@@ -36,10 +36,10 @@ export function clusters(cs: ReviewComment[], threshold = 0.34, minPrs = 2): Rev
   return groups.map((g) => g.items).filter((items) => new Set(items.map((i) => i.pr)).size >= minPrs).sort((a, b) => b.length - a.length);
 }
 
-export function fetchComments(root: string, days: number): ReviewComment[] {
-  const repo = sh(`gh repo view --json nameWithOwner -q .nameWithOwner`, { cwd: root }).stdout.trim();
+export function fetchComments(root: string, days: number, repoOverride?: string): ReviewComment[] {
+  const repo = repoOverride || sh(`gh repo view --json nameWithOwner -q .nameWithOwner`, { cwd: root }).stdout.trim();
   const since = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
-  const prs = JSON.parse(sh(`gh pr list --state merged --search 'merged:>=${since}' --limit 100 --json number`, { cwd: root }).stdout || "[]") as { number: number }[];
+  const prs = JSON.parse(sh(`gh pr list --state merged --search 'merged:>=${since}' --limit 100 --json number --repo '${repo}'`, { cwd: root }).stdout || "[]") as { number: number }[];
   const out: ReviewComment[] = [];
   for (const { number } of prs) {
     const raw = JSON.parse(sh(`gh api --paginate repos/${repo}/pulls/${number}/comments`, { cwd: root }).stdout || "[]") as any[];
@@ -65,8 +65,8 @@ export function proposalsMarkdown(groups: ReviewComment[][]): string {
   ].join("\n");
 }
 
-export function learn(root: string, days = 30): string {
-  const md = proposalsMarkdown(clusters(misses(fetchComments(root, days))));
+export function learn(root: string, days = 30, repo?: string): string {
+  const md = proposalsMarkdown(clusters(misses(fetchComments(root, days, repo))));
   const path = join(root, ".ai-sdlc", "learn", "proposals.md");
   writeFileEnsured(path, md);
   return path;
