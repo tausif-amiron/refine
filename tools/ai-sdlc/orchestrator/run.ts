@@ -184,7 +184,10 @@ export async function buildTicket(o: BuildOptions): Promise<BuildResult> {
       const report = gateReport(gates.filter((g) => !g.pass));
       const capped = recordFailure(st, { attempt: a.attemptNo, run_id: runId, report, agentSummary: a.res.text.slice(0, 2000), cost_usd: a.res.cost_usd }, cfg.attemptsPerUnit);
       log(`✗ ${unit.id} failed: ${gates.filter((g) => !g.pass).map((g) => g.name).join(", ")}`);
+      // A gate whose own tool cannot run fails every attempt the same way: escalate now, as a setup problem.
+      const setup = gates.find((g) => !g.pass && g.setup);
       if (capped) { await escalate(unit, st, `${cfg.attemptsPerUnit} attempts failed`); status = "escalated"; }
+      else if (setup) { await escalate(unit, st, `setup problem: the ${setup.name} gate could not run its own tool (see the report). Fix the configuration, then reset the unit; more attempts would fail the same way`); status = "escalated"; }
     }
     await emit(root, {
       event: "run", run_id: runId, ticket, unit: unit.id, agent: unit.agent, model: unit.model, attempt: a.attemptNo,

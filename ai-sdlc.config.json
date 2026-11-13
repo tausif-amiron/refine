@@ -86,8 +86,7 @@
       "node {workflow}/checks/guards/auth-endpoints.mjs"
     ],
     "integration": [],
-    "contract": ["node {workflow}/checks/contract/verify.mjs"],
-    "lintChanged": "npx biome lint"
+    "contract": ["node {workflow}/checks/contract/verify.mjs"]
   },
   "services": [
     {

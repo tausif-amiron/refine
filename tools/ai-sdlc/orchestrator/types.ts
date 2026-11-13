@@ -138,4 +138,5 @@ export interface AgentRunResult {
   raw?: unknown;
 }
 
-export interface GateResult { name: string; pass: boolean; output: string }
+/** setup: the gate's own tool could not run (a configuration problem a person fixes, not the agent's work). */
+export interface GateResult { name: string; pass: boolean; output: string; setup?: boolean }

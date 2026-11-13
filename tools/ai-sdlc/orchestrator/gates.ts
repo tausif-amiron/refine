@@ -337,7 +337,12 @@ export function lintNewGate(ctx: GateContext, files: string[]): GateResult {
   const added: string[] = [];
   for (const f of targets) {
     const now = lintFindings(cmd, ctx.cwd, f, readFileSync(join(ctx.cwd, f), "utf8"), spec);
-    if ("error" in now) return { name: "lint-new", pass: false, output: `Lint could not run on ${f}:\n${now.error}` };
+    if ("error" in now) {
+      // If the linter cannot lint even an empty file, the command is broken: a setup problem, not the agent's code.
+      const probe = lintFindings(cmd, ctx.cwd, f, "", spec);
+      if ("error" in probe) return { name: "lint-new", pass: false, setup: true, output: `Setup problem: the lint command (checks.lintChanged: ${cmd}) cannot run, even on an empty file. Fix the configuration; the unit's code is not at fault.\n${now.error}` };
+      return { name: "lint-new", pass: false, output: `Lint could not run on ${f}:\n${now.error}` };
+    }
     const before = git(ctx.cwd, `show ${ctx.brief.base_commit}:'${f}'`);
     const prev = before.code === 0 ? lintFindings(cmd, ctx.cwd, f, before.stdout, spec) : [];
     const counts = new Map<string, number>();
