@@ -119,6 +119,17 @@ async function main() {
       if (q.status !== "pass") process.exitCode = 5;
       return;
     }
+    case "gates": {
+      // A developer finished an escalated unit on its branch: run the same gates on it, with no agent.
+      const t = needTicket();
+      const unit = pos[1];
+      if (!unit) throw new Error(`usage: ${cliHint("gates <TICKET> <unit id>", root)}`);
+      const b = await buildTicket({ root, ticket: t, cfg, runner, takeOver: unit });
+      out(b.summary);
+      if (b.status !== "pass") { process.exitCode = 4; return; }
+      out(`Next: ${cliHint(`qa ${t}`, root)}`);
+      return;
+    }
     case "qa": {
       const q = await qaTicket({ root, ticket: needTicket(), cfg, runner });
       out(`${q.summary}\nQA report: ${q.reportPath}`);
@@ -202,7 +213,7 @@ async function main() {
       return;
     }
     default:
-      out("commands: doctor | paperclip-sync | paperclip-run | extract | plan | run | qa | score-probe | score-finalize | pr | review | release | ops-alert | ops-verify | learn");
+      out("commands: doctor | gates | paperclip-sync | paperclip-run | extract | plan | run | qa | score-probe | score-finalize | pr | review | release | ops-alert | ops-verify | learn");
       process.exitCode = cmd ? 1 : 0;
   }
 }

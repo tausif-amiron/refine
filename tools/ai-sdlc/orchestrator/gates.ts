@@ -302,7 +302,7 @@ export function mutationGate(ctx: GateContext, testFiles: string[], implFiles: s
     pass: survivors.length === 0,
     survivors, killed,
     output: survivors.length
-      ? `${survivors.length} of ${mutants.length} mutants survived (no test went red). Add tests that fail for these changes, or mark an equivalent line with "ai-sdlc-mutation: skip":\n${survivors.map((m) => `  ${m.file}:${m.line} [${m.operator}]\n    - ${m.original.trim()}\n    + ${m.mutated.trim()}`).join("\n")}`
+      ? `${survivors.length} of ${mutants.length} mutants survived (no test went red). ${SURVIVOR_ADVICE}\n${survivors.map((m) => `  ${m.file}:${m.line} [${m.operator}]\n    - ${m.original.trim()}\n    + ${m.mutated.trim()}`).join("\n")}`
       : mutants.length ? `${killed} of ${mutants.length} mutants killed${tierNote}` : "no applicable mutants: this change is not tested by mutation",
   };
 }
@@ -395,6 +395,12 @@ export function externalMutationGate(ctx: GateContext): GateResult | undefined {
       : `${ids.length} new catalogue mutation(s) caught by the repo's tool: ${ids.join(", ")}`,
   };
 }
+
+/**
+ * What to do with a surviving mutant. RT-2's agents spent four attempts writing tests for a mutant nothing could catch:
+ * the mutated line was redundant (a later check already handled the same inputs).
+ */
+export const SURVIVOR_ADVICE = "Add a test that fails for each change below. If no input can tell the original and the mutated line apart, the line is probably redundant: remove it. Only if it must stay, mark it with \"ai-sdlc-mutation: skip\" and say why in a comment:";
 
 /** All unit gates in order. Stops at the first failing group so the fix brief stays focused. */
 export function runUnitGates(ctx: GateContext): GateResult[] {
