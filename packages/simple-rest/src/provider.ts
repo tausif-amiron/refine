@@ -6,6 +6,30 @@ import { axiosInstance, generateSort, generateFilter } from "./utils";
 type MethodTypes = "get" | "delete" | "head" | "options";
 type MethodTypesWithBody = "post" | "put" | "patch";
 
+/**
+ * Reads the list total from the `x-total-count` response header.
+ *
+ * A finite, non-negative number (including `0`) is used as the total.
+ * When the header is missing, empty, non-numeric, negative or not finite,
+ * the total falls back to the number of records returned (`data.length`).
+ */
+const getTotal = (headerValue: unknown, data: unknown): number => {
+  const fallback = Array.isArray(data) ? data.length : 0;
+
+  // A missing header (undefined or null) becomes "undefined" or "null" here, which is not a number, so it falls back below.
+  const raw = String(headerValue).trim();
+  if (raw === "") {
+    return fallback;
+  }
+
+  const total = Number(raw);
+  if (!Number.isFinite(total) || total < 0) {
+    return fallback;
+  }
+
+  return total;
+};
+
 export const dataProvider = (
   apiUrl: string,
   httpClient: AxiosInstance = axiosInstance,
@@ -13,6 +37,14 @@ export const dataProvider = (
   Required<DataProvider>,
   "createMany" | "updateMany" | "deleteMany"
 > => ({
+  /**
+   * Fetches a list of records.
+   *
+   * `total` is read from the `x-total-count` response header. A header value
+   * of `"0"` gives `total: 0`. When the header is missing, empty, non-numeric,
+   * negative or not finite, `total` falls back to `data.length` (the number of
+   * records in this response).
+   */
   getList: async ({ resource, pagination, filters, sorters, meta }) => {
     const url = `${apiUrl}/${resource}`;
 
@@ -55,11 +87,9 @@ export const dataProvider = (
       headers: headersFromMeta,
     });
 
-    const total = +headers["x-total-count"];
-
     return {
       data,
-      total: total || data.length,
+      total: getTotal(headers?.["x-total-count"], data),
     };
   },
 
