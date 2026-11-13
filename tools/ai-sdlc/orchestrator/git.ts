@@ -2,7 +2,7 @@
 // ticket branch only after the unit passes its gates.
 import { allProfiles } from "../checks/hooks/profile.mjs";
 import { cpSync, copyFileSync, appendFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync, type Dirent } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { sh } from "./util.ts";
 
 const q = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
@@ -59,12 +59,31 @@ export function worktreeDir(root: string, unitId: string): string {
   return join(root, ".ai-sdlc", "worktrees", unitId);
 }
 
+/**
+ * Git hooks often load generated files that are never committed: husky's `.husky/_` (made by `husky install`). A
+ * worktree is a checkout, so its hooks would fail on every commit (refine: "husky.sh: No such file or directory"),
+ * and agents rightly refuse to skip hooks. Link whatever the main checkout's hooks folder has that the worktree lacks.
+ */
+export function linkHookHelpers(root: string, dir: string): string[] {
+  const hooksPath = git(root, "config core.hooksPath").stdout.trim().replace(/\/$/, "");
+  if (!hooksPath || isAbsolute(hooksPath) || !existsSync(join(root, hooksPath))) return [];
+  const linked: string[] = [];
+  for (const name of readdirSync(join(root, hooksPath))) {
+    const rel = `${hooksPath}/${name}`;
+    if (existsSync(join(dir, rel))) continue;
+    mkdirSync(join(dir, hooksPath), { recursive: true });
+    symlinkSync(join(root, rel), join(dir, rel));
+    linked.push(rel);
+  }
+  return linked;
+}
+
 /** Fresh worktree for a unit at `base`, on branch `branch` (reset if it exists), with dependencies linked. */
 export function addWorktree(root: string, dir: string, branch: string, base: string, extraLinks: string[] = []): void {
   if (existsSync(dir)) removeWorktree(root, dir);
   mkdirSync(join(root, ".ai-sdlc", "worktrees"), { recursive: true });
   must(root, `worktree add -f -B ${q(branch)} ${q(dir)} ${q(base)}`);
-  const linked = linkDependencies(root, dir, extraLinks);
+  const linked = [...linkDependencies(root, dir, extraLinks), ...linkHookHelpers(root, dir)];
   excludeFromGit(root, linked);
   mkdirSync(join(dir, ".ai-sdlc"), { recursive: true });
   writeFileSync(join(dir, ".ai-sdlc", "linked.json"), JSON.stringify(linked));
