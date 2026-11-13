@@ -1,0 +1,82 @@
+{
+  "entities": [],
+  "external_systems": [],
+  "limits": [],
+  "modules": [
+    {
+      "anchor": {
+        "quote": "In packages/simple-rest/src/provider.ts (getList):",
+        "section": "Problem"
+      },
+      "behaviours": [
+        "When the getList response has the header x-total-count: 1000, getList returns total 1000.",
+        "When the getList response has the header x-total-count: 0, getList returns total 0 and does not fall back to data.length.",
+        "When the getList response has no x-total-count header, getList never returns NaN as total. It returns the documented fallback value (to be decided, see questions), and does not do so by accident through the falsy check `total || data.length`.",
+        "The fallback for a missing x-total-count header is written down in the package docs (README or a JSDoc comment on getList), and the text matches what the code does.",
+        "The getList tests cover three cases: header present, header absent, and header \"0\". Each case mocks the HTTP response, so none depends on the live fake-rest API's total.",
+        "Unchanged: the getList request URL, the query parameters (_start, _end, _sort, _order, filters), the HTTP method and the headers taken from meta stay exactly as they are now. The existing getList tests still pass.",
+        "Unchanged: getMany, create, update, getOne, deleteOne, getApiUrl and custom in packages/simple-rest/src/provider.ts behave exactly as before.",
+        "A changeset file in .changeset/ marks @refinedev/simple-rest for a patch release and describes the x-total-count fix."
+      ],
+      "files": [
+        "packages/simple-rest/src/provider.ts",
+        "packages/simple-rest/README.md",
+        ".changeset/simple-rest-get-list-total.md"
+      ],
+      "name": "simple-rest getList total",
+      "tests": [
+        "packages/simple-rest/test/getList/index.spec.ts",
+        "packages/simple-rest/test/getList/index.mock.ts"
+      ]
+    }
+  ],
+  "questions": [
+    {
+      "affects": "The pagination total that @refinedev/simple-rest gives to useList, useTable and the table paginators in every app that uses this provider against an API that does not send x-total-count.",
+      "if_wrong": "If we keep data.length, the 'only one page' bug described in the ticket stays. If we switch to undefined or throw, existing apps that rely on the current total may lose pagination controls or start failing, which is a behaviour change that does not fit a patch changeset.",
+      "q": "What should getList return as total when the x-total-count header is missing? Options: (a) keep data.length but do it explicitly, (b) return undefined (or omit total), (c) throw or log a warning, (d) let the caller choose the fallback through an option."
+    },
+    {
+      "affects": "Which files the unit may touch (its SCOPE). The current SCOPE has the README and provider.ts, but not the documentation/ site.",
+      "if_wrong": "If the docs belong on the documentation site, the unit cannot edit them because they are outside SCOPE, and the 'documented fallback' criterion will not be met.",
+      "q": "Where should the fallback be documented: the packages/simple-rest README, a JSDoc comment on getList in provider.ts, or the documentation site (documentation/docs/data/data-provider/index.md)?"
+    },
+    {
+      "affects": "How getList parses the header value before returning total.",
+      "if_wrong": "If invalid values are not handled, total could still be NaN for malformed headers, and pagination would break in the same way.",
+      "q": "What counts as an invalid x-total-count value, for example a non-numeric string or an empty string? Should it be handled like a missing header?"
+    },
+    {
+      "affects": "Whether the @refinedev/rest simple-rest variant gets the same fix and its own changeset.",
+      "if_wrong": "If it has the same bug and is left out, users of @refinedev/rest keep getting wrong totals. If it is included without being asked for, the change goes beyond the package named in the ticket.",
+      "q": "packages/rest/src/data-providers/simple-rest/simple-rest.options.ts also reads x-total-count. Is it in scope for this ticket, or is only @refinedev/simple-rest in scope?"
+    }
+  ],
+  "roles": [],
+  "schema": "ai-sdlc.ir.v1",
+  "screens": [],
+  "sealed_acceptance_criteria": [
+    {
+      "id": "AC-1",
+      "text": "Missing header is handled explicitly with a documented fallback."
+    },
+    {
+      "id": "AC-2",
+      "text": "x-total-count: 0 is treated as a valid total."
+    },
+    {
+      "id": "AC-3",
+      "text": "Tests cover header present / absent / \"0\"."
+    },
+    {
+      "id": "AC-4",
+      "text": "Changeset added (patch)."
+    }
+  ],
+  "sealed_hash": "sha256:6872a76c339abb99ba8d8f641da20b56c89fc0314673f8b3ce9ac7f8ecce7740",
+  "services": [],
+  "ticket": "RT-2",
+  "ticket_hash": "sha256:0fafc03d9268f8350deb604eef4f20030f91ce9ee034f121ee030c8c299def88",
+  "title": "[Bug] simple-rest getList: wrong total when x-total-count header is missing",
+  "unplaced": []
+}

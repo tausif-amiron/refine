@@ -1,0 +1,27 @@
+{
+  "probes": [
+    {
+      "ask": "As a new user, check: Missing header is handled explicitly with a documented fallback. Record exactly what the product shows.",
+      "criterion": "AC-1",
+      "id": "P-1"
+    },
+    {
+      "ask": "As a new user, check: x-total-count: 0 is treated as a valid total. Record exactly what the product shows.",
+      "criterion": "AC-2",
+      "id": "P-2"
+    },
+    {
+      "ask": "As a new user, check: Tests cover header present / absent / \"0\". Record exactly what the product shows.",
+      "criterion": "AC-3",
+      "id": "P-3"
+    },
+    {
+      "ask": "As a new user, check: Changeset added (patch). Record exactly what the product shows.",
+      "criterion": "AC-4",
+      "id": "P-4"
+    }
+  ],
+  "schema": "ai-sdlc.probes.v1",
+  "sealed_hash": "sha256:6872a76c339abb99ba8d8f641da20b56c89fc0314673f8b3ce9ac7f8ecce7740",
+  "ticket": "RT-2"
+}
