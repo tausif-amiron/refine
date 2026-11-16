@@ -30,6 +30,10 @@ const getTotal = (headerValue: unknown, data: unknown): number => {
   return total;
 };
 
+/** Adds the `signal` option only when a signal is present, so the config is unchanged otherwise. */
+const withSignal = (signal: unknown): { signal?: AbortSignal } =>
+  signal ? { signal: signal as AbortSignal } : {};
+
 export const dataProvider = (
   apiUrl: string,
   httpClient: AxiosInstance = axiosInstance,
@@ -54,7 +58,7 @@ export const dataProvider = (
       mode = "server",
     } = pagination ?? {};
 
-    const { headers: headersFromMeta, method } = meta ?? {};
+    const { headers: headersFromMeta, method, signal } = meta ?? {};
     const requestMethod = (method as MethodTypes) ?? "get";
 
     const queryFilters = generateFilter(filters);
@@ -85,6 +89,7 @@ export const dataProvider = (
 
     const { data, headers } = await httpClient[requestMethod](urlWithQuery, {
       headers: headersFromMeta,
+      ...withSignal(signal),
     });
 
     return {
@@ -94,12 +99,12 @@ export const dataProvider = (
   },
 
   getMany: async ({ resource, ids, meta }) => {
-    const { headers, method } = meta ?? {};
+    const { headers, method, signal } = meta ?? {};
     const requestMethod = (method as MethodTypes) ?? "get";
 
     const { data } = await httpClient[requestMethod](
       `${apiUrl}/${resource}?${stringify({ id: ids })}`,
-      { headers },
+      { headers, ...withSignal(signal) },
     );
 
     return {
@@ -140,10 +145,13 @@ export const dataProvider = (
   getOne: async ({ resource, id, meta }) => {
     const url = `${apiUrl}/${resource}/${id}`;
 
-    const { headers, method } = meta ?? {};
+    const { headers, method, signal } = meta ?? {};
     const requestMethod = (method as MethodTypes) ?? "get";
 
-    const { data } = await httpClient[requestMethod](url, { headers });
+    const { data } = await httpClient[requestMethod](url, {
+      headers,
+      ...withSignal(signal),
+    });
 
     return {
       data,
@@ -178,6 +186,7 @@ export const dataProvider = (
     payload,
     query,
     headers,
+    meta,
   }) => {
     let requestUrl = `${url}?`;
 
@@ -220,6 +229,7 @@ export const dataProvider = (
       default:
         axiosResponse = await httpClient.get(requestUrl, {
           headers,
+          ...withSignal(meta?.signal),
         });
         break;
     }
