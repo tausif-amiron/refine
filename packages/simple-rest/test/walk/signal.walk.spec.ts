@@ -53,12 +53,22 @@ describe("walk RT-7: simple-rest signal forwarding (real axios, local server)", 
   describe.each(Object.keys(calls))("%s", (name) => {
     it("AC-1: aborting in flight rejects and cancels the request", async () => {
       const before = closed;
+      const hitsBefore = hits;
       const ac = new AbortController();
       const p = calls[name]({ signal: ac.signal });
-      setTimeout(() => ac.abort(), 50);
-      await expect(p).rejects.toBeDefined();
-      await new Promise((r) => setTimeout(r, 100));
-      expect(closed).toBeGreaterThan(before);
+      const settled = p.then(
+        () => "resolved",
+        () => "rejected",
+      );
+      // abort only once the server has received the request
+      await vi.waitFor(() => expect(hits).toBeGreaterThan(hitsBefore), {
+        timeout: 2000,
+      });
+      ac.abort();
+      expect(await settled).toBe("rejected");
+      await vi.waitFor(() => expect(closed).toBeGreaterThan(before), {
+        timeout: 2000,
+      });
     });
 
     it("already-aborted signal rejects", async () => {
