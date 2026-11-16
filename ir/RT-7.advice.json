@@ -1,0 +1,171 @@
+{
+  "questions": [
+    {
+      "options": [
+        {
+          "answer": "Forward meta.signal in getList, getOne and getMany. In custom, forward it only when params.method is \"get\", by passing it to client(url, { signal }) or with client.extend({ signal }). Do not add it to create, update, deleteOne or the *Many writes. Make simple-rest's custom follow the same rule.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/rest/src/create-data-provider.ts:48",
+            "packages/rest/src/create-data-provider.ts:88",
+            "packages/rest/src/create-data-provider.ts:313",
+            "packages/rest/src/create-data-provider.ts:341",
+            "packages/core/src/hooks/data/useCustom.ts:176",
+            "packages/core/src/hooks/data/useCustomMutation.ts:131",
+            "packages/core/src/contexts/data/types.ts:431",
+            "packages/simple-rest/src/provider.ts:220"
+          ],
+          "if_wrong": "A useCustom call that uses head or options, or a POST that is really a search, keeps running after unmount. The only cost is wasted bandwidth, and it can be added later without breaking anything.",
+          "why": "Only queries receive a signal from core. useList, useOne, useMany, useInfiniteList and useCustom call prepareQueryContext. useCustomMutation uses useMutation and does not call it, so writes never get meta.signal from core. useCustom accepts every method, including post, put and patch (core types.ts:431), and it does pass the signal. If custom is limited to GET, a useCustom POST that unmounts cannot cut off a write halfway. It also matches the ticket's 'custom (GET)' for simple-rest. In rest, custom builds its own client with kyBase.create, not the shared ky instance, so the signal has to be added at that point. Note that rest's getMany only exists when options.getMany is set."
+        },
+        {
+          "answer": "Forward meta.signal in getList, getOne, getMany and in custom for every HTTP method, because useCustom is a query and TanStack owns its lifetime.",
+          "confidence": "low",
+          "evidence": [
+            "packages/core/src/hooks/data/useCustom.ts:171",
+            "packages/core/src/hooks/data/useCustomMutation.ts:131",
+            "packages/rest/src/create-data-provider.ts:333"
+          ],
+          "if_wrong": "A useCustom call with post, put, patch or delete is aborted when the component unmounts or the params change. The server may apply the write while the client sees a cancellation. This is the risk the question names, and it breaks the ticket's 'custom (GET)' wording for simple-rest.",
+          "why": "useCustom passes the signal whatever the method is (useCustom.ts:176, types.ts:431). Forwarding it every time is simpler and stays consistent. useCustomMutation never supplies a signal, so ordinary mutations are not affected."
+        },
+        {
+          "answer": "Forward meta.signal in getList, getOne and getMany only, and leave custom out of rest.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/rest/src/create-data-provider.ts:55",
+            "packages/rest/src/create-data-provider.ts:79",
+            "packages/rest/src/create-data-provider.ts:99"
+          ],
+          "if_wrong": "useCustom GET requests in rest keep running after unmount while the same requests in simple-rest are cancelled. The two packages behave differently even though the ticket groups them together.",
+          "why": "This is the narrowest reading of 'read methods' and touches the fewest lines in create-data-provider.ts."
+        }
+      ],
+      "prompt": "Which @refinedev/rest methods count as 'read methods': getList, getOne and getMany only, or also custom when its method is GET? Also, should custom forward the signal for every HTTP method, or only for GET?",
+      "question": "Q-1",
+      "recommended": 0
+    },
+    {
+      "options": [
+        {
+          "answer": "Rely on TanStack Query v5. When the queryFn has read the signal and the query loses its observers (unmount or a key change), TanStack cancels it with revert, so the hook never reaches isError and no error effect runs. Do not change core. Add provider tests that show an aborted request rejects and is not swallowed.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/core/package.json:42",
+            "packages/core/src/hooks/data/useList.ts:297",
+            "packages/core/src/hooks/data/useCustom.ts:202",
+            "packages/simple-rest/src/utils/axios.ts:10",
+            "https://github.com/TanStack/query/blob/main/packages/query-core/src/query.ts"
+          ],
+          "if_wrong": "If some path still sets isError with an abort error, users see 'Error (status code: undefined)'. checkError also passes the error to authProvider.onError, which can log users out if their onError treats an undefined status as unauthorised.",
+          "why": "Every hook raises error notifications and calls checkError only when queryResponse.isError is true (useList.ts:297, useCustom.ts:202). In @tanstack/react-query ^5.81.5, cancellation is tracked by TanStack's own retryer, not by what the queryFn throws, so the HttpError produced by the axios interceptor makes no difference. cancelQueries also reverts by default. The ticket says 'No core changes expected'. Inference: this TanStack behaviour is not tested in this repo."
+        },
+        {
+          "answer": "Rely on TanStack's revert as the main guard. Also change the simple-rest axios interceptor so a cancellation (axios.isCancel(error) or code ERR_CANCELED) is re-thrown unchanged instead of being turned into an HttpError with undefined message and statusCode. Do not change core.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/simple-rest/src/utils/axios.ts:6",
+            "packages/simple-rest/src/utils/axios.ts:11"
+          ],
+          "if_wrong": "Callers that rely on every simple-rest error having the HttpError shape get a CanceledError for aborts, which changes behaviour slightly for anyone who catches errors from direct provider calls. axios.ts also has to be added to the unit's SCOPE.",
+          "why": "The interceptor currently spreads every error, cancellations included, into an HttpError whose message and statusCode are undefined. If a cancellation passes through unchanged, any user code or onError handler can still recognise it as an abort. The file is inside simple-rest, so the ticket's package scope holds."
+        },
+        {
+          "answer": "Add a guard in core: useList, useOne, useMany, useInfiniteList and useCustom skip handleNotification and checkError when the error is an abort (name AbortError, CanceledError, or code ERR_CANCELED).",
+          "confidence": "low",
+          "evidence": [
+            "packages/core/src/hooks/data/useList.ts:297",
+            "packages/core/src/hooks/data/useCustom.ts:202"
+          ],
+          "if_wrong": "It breaks the ticket's 'No core changes expected' scope and changes notification and onError behaviour for every data provider. It also needs a core changeset that the ticket does not list.",
+          "why": "This catches every path, including user-aborted signals and custom providers."
+        }
+      ],
+      "prompt": "For 'Aborted requests don't show error notifications': is it enough to rely on TanStack Query reverting a cancelled query (so useList/useOne never reach isError), or must a provider-level or core-level guard also stop notifications when an abort error (axios CanceledError / ERR_CANCELED, ky AbortError) reaches the hooks? Note that the ticket says 'No core changes expected', and the simple-rest axios interceptor (packages/simple-rest/src/utils/axios.ts) turns every error, including cancellations, into an HttpError with an undefined message and statusCode.",
+      "question": "Q-2",
+      "recommended": 0
+    },
+    {
+      "options": [
+        {
+          "answer": "Provider-level tests only. In packages/simple-rest/test/{getList,getMany,getOne,custom} and packages/rest/src/data-providers/*/specs, use nock with a delayed reply, pass meta.signal from the test's own AbortController, abort it, and expect a rejection. Also add a test with no signal that expects unchanged results.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/core/src/hooks/data/useList.spec.tsx:88",
+            "packages/simple-rest/package.json:47",
+            "packages/simple-rest/package.json:53",
+            "packages/rest/package.json:94",
+            "packages/simple-rest/test/getList/index.spec.ts"
+          ],
+          "if_wrong": "A reviewer who reads 'Changing filters or unmounting' literally judges AC-1 unmet, and a hook-level test has to be added in a follow-up.",
+          "why": "Core already checks that the hooks put a signal into meta (useList.spec.tsx:88). The missing link is the provider reading it. Both packages already test with nock (simple-rest package.json:53, rest package.json:94). simple-rest has no React testing library in its devDependencies, so a hook test there would need new dependencies. The AC wording '(verified by tests with an AbortController)' fits tests at this level."
+        },
+        {
+          "answer": "Provider-level tests, plus one hook-level test in packages/core/src/hooks/data/useList.spec.tsx. Render useList with a mock getList that records meta.signal, unmount the hook, and assert signal.aborted is true. Core test files go into SCOPE; core source does not.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/core/src/hooks/data/useList.spec.tsx:60",
+            "packages/core/src/hooks/data/useList.spec.tsx:88",
+            "packages/core/package.json:55"
+          ],
+          "if_wrong": "Core test files have to be added to the build unit's SCOPE. If the team reads 'No core changes' as 'no files under packages/core', this oversteps.",
+          "why": "This shows both halves of the chain without changing any core source. TestWrapper and renderHook are already used in useList.spec.tsx."
+        },
+        {
+          "answer": "Full integration tests inside simple-rest and rest. Render useList through @refinedev/core with the real provider and nock, change filters or unmount, and assert the request was aborted.",
+          "confidence": "low",
+          "evidence": [
+            "packages/simple-rest/package.json:50",
+            "packages/simple-rest/package.json:47"
+          ],
+          "if_wrong": "It needs new devDependencies (React, @testing-library/react, a DOM environment) in both packages, which makes the change much larger. Tests that combine TanStack timing with nock tend to be flaky.",
+          "why": "This is the most literal proof of AC-1 for each package."
+        }
+      ],
+      "prompt": "Must 'Changing filters or unmounting aborts the in-flight request' be proved by an integration test that drives useList/useOne through @refinedev/core (changing filters, unmounting), or are provider-level tests enough, where a test passes a signal from its own AbortController and aborts it?",
+      "question": "Q-3",
+      "recommended": 0
+    },
+    {
+      "options": [
+        {
+          "answer": "Update both package pages: a short 'Request cancellation' section in simple-rest/index.md next to the meta sections, and a note under getList, getOne, getMany and custom in rest-data-provider/index.md. Also add one paragraph to the 'meta Usage' section of data-provider/index.md saying that read methods receive meta.signal and custom providers should forward it.",
+          "confidence": "medium",
+          "evidence": [
+            "documentation/docs/data/packages/simple-rest/index.md:92",
+            "documentation/docs/data/packages/rest-data-provider/index.md:1391",
+            "documentation/docs/data/data-provider/index.md:636"
+          ],
+          "if_wrong": "The general page is shared documentation. If owners wanted it left alone, the extra paragraph is review noise, but it can be dropped without touching the package pages.",
+          "why": "The simple-rest page already documents meta.method and meta.headers (lines 71 and 94), so cancellation fits there. A search for 'signal' under documentation/docs/data finds nothing. The general page already has a 'meta Usage' section (line 636), which is where authors of custom providers will look."
+        },
+        {
+          "answer": "Update only the two package pages: documentation/docs/data/packages/simple-rest/index.md and documentation/docs/data/packages/rest-data-provider/index.md.",
+          "confidence": "medium",
+          "evidence": [
+            "documentation/docs/data/packages/simple-rest/index.md:58",
+            "documentation/docs/data/packages/rest-data-provider/index.md:46"
+          ],
+          "if_wrong": "Authors of custom providers are never told to read meta.signal. A reviewer who reads 'Data provider docs' as the general page judges the AC unmet.",
+          "why": "The ticket's scope is the two packages, and these pages document each package's meta options."
+        },
+        {
+          "answer": "Update all of them: both package pages, data-provider/index.md, packages/simple-rest/README.md and packages/rest/README.md.",
+          "confidence": "low",
+          "evidence": [
+            "packages/simple-rest/README.md",
+            "packages/rest/README.md",
+            "documentation/docs/data/data-provider/index.md:636"
+          ],
+          "if_wrong": "It widens the docs SCOPE and duplicates content that can drift. The READMEs are not obviously meant by 'Data provider docs', and the code does not settle whether they were intended.",
+          "why": "Covers every place a user might look."
+        }
+      ],
+      "prompt": "Which pages are 'Data provider docs': the package pages (documentation/docs/data/packages/simple-rest/index.md and documentation/docs/data/packages/rest-data-provider/index.md), the general data provider page (documentation/docs/data/data-provider/index.md, which does not mention signal today), the package READMEs, or all of them?",
+      "question": "Q-4",
+      "recommended": 0
+    }
+  ],
+  "schema": "ai-sdlc.advice.v1",
+  "ticket": "RT-7"
+}
