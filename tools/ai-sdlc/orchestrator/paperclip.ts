@@ -231,7 +231,8 @@ export async function paperclipRun(o: { root: string; api: PaperclipApi; runStep
           open = openQuestions(o.root, ticket);
           continue;
         }
-        const answered = [...mine].filter((i) => i.result).sort((a, b) => ((a.createdAt ?? "") < (b.createdAt ?? "") ? 1 : -1))[0];
+        // A set the runner withdrew itself (after a comment) is not a person's response.
+        const answered = [...mine].filter((i) => i.result && i.result.outcome !== "withdrawn").sort((a, b) => ((a.createdAt ?? "") < (b.createdAt ?? "") ? 1 : -1))[0];
         if (answered?.result) {
           const r = answered.result;
           if (r.cancelled || r.outcome || !r.answers.length) {
