@@ -12,7 +12,7 @@ import { gateReport, runUnitGates, scopeGate, checksGate, contractsGate } from "
 import { loadIr, validateIr } from "./ir.ts";
 import { blockingFrom, formatOwed, loadOwed, mergeOwed, openFrom, openTo, parseOwed } from "./owed.ts";
 import type { AgentRunner } from "./runner.ts";
-import { emit } from "./telemetry.ts";
+import { emit, usageFields } from "./telemetry.ts";
 import type { AgentRunResult, GateResult, IR, Plan, Unit } from "./types.ts";
 import { loadState, recordFailure, reopen, saveState, type TicketState, type UnitState } from "./attempts.ts";
 import { newRunId, writeFileEnsured } from "./util.ts";
@@ -216,7 +216,7 @@ export async function buildTicket(o: BuildOptions): Promise<BuildResult> {
     }
     await emit(root, {
       event: "run", run_id: runId, ticket, unit: unit.id, agent: unit.agent, model: a.model, attempt: a.attemptNo,
-      started_at: a.started, ended_at: a.ended, status, tokens_in: a.res.tokens_in, tokens_out: a.res.tokens_out, cost_usd: a.res.cost_usd, cost_source: a.res.cost_source,
+      started_at: a.started, ended_at: a.ended, status, ...usageFields(a.res),
       output_ref: `branch:${a.branch}`, detail: { gates: gates.map((g) => ({ name: g.name, pass: g.pass })) },
     }, cfg.telemetry.file);
     removeWorktree(root, a.dir);

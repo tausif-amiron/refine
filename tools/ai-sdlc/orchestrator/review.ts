@@ -7,7 +7,7 @@ import type { Config } from "./config.ts";
 import { ghFor } from "./pr.ts";
 import { modelFor } from "./config.ts";
 import type { AgentRunner } from "./runner.ts";
-import { emit } from "./telemetry.ts";
+import { emit, usageFields } from "./telemetry.ts";
 import type { IR } from "./types.ts";
 import { extractJson, newRunId, sh } from "./util.ts";
 import { changedLinesFromDiff } from "../checks/mutation/mutate.ts";
@@ -111,7 +111,7 @@ export async function reviewPr(o: { root: string; pr: string; cfg: Config; runne
   const out = extractJson<ReviewOutput>(res.text);
   if (typeof out.summary !== "string") throw new Error("review output has no summary");
   const payload = buildReviewPayload(out, diffText, pr.headRefOid, riskTags(diffText));
-  await emit(o.root, { event: "run", run_id: runId, ticket, agent: "review", started_at: started, ended_at: new Date().toISOString(), status: "info", tokens_in: res.tokens_in, tokens_out: res.tokens_out, cost_usd: res.cost_usd, cost_source: res.cost_source, output_ref: `pr:${o.pr}` }, o.cfg.telemetry.file);
+  await emit(o.root, { event: "run", run_id: runId, ticket, agent: "review", started_at: started, ended_at: new Date().toISOString(), status: "info", ...usageFields(res), output_ref: `pr:${o.pr}` }, o.cfg.telemetry.file);
   if (o.post !== false) {
     const repo = o.cfg.pr?.repo || sh(`gh repo view --json nameWithOwner -q .nameWithOwner`, { cwd: o.root }).stdout.trim();
     const r = sh(`gh api -X POST repos/${repo}/pulls/${o.pr}/reviews --input -`, { cwd: o.root, input: JSON.stringify(payload) });

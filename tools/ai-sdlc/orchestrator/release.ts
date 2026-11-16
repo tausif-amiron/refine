@@ -3,7 +3,7 @@
 import type { Config } from "./config.ts";
 import { modelFor } from "./config.ts";
 import type { AgentRunner } from "./runner.ts";
-import { emit } from "./telemetry.ts";
+import { emit, usageFields } from "./telemetry.ts";
 import { extractJson, newRunId, sh, writeFileEnsured } from "./util.ts";
 import { join } from "node:path";
 import { riskTags } from "./review.ts";
@@ -46,7 +46,7 @@ export async function releaseNotes(o: { root: string; cfg: Config; runner: Agent
     `## Tickets\n${facts.tickets.map((t) => `- ${t}`).join("\n") || "- (none)"}`,
   ].filter((l) => l !== "").join("\n");
   writeFileEnsured(join(o.root, ".ai-sdlc", "release", `${o.version}.md`), md + "\n");
-  await emit(o.root, { event: "release", run_id: runId, agent: "release", status: "info", cost_usd: res.cost_usd, cost_source: res.cost_source, tokens_in: res.tokens_in, tokens_out: res.tokens_out, output_ref: `file:.ai-sdlc/release/${o.version}.md`, detail: { version: o.version, risk: out.risk_level, tickets: facts.tickets } }, o.cfg.telemetry.file);
+  await emit(o.root, { event: "release", run_id: runId, agent: "release", status: "info", ...usageFields(res), output_ref: `file:.ai-sdlc/release/${o.version}.md`, detail: { version: o.version, risk: out.risk_level, tickets: facts.tickets } }, o.cfg.telemetry.file);
   return md;
 }
 

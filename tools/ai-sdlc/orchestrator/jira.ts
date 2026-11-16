@@ -1,6 +1,6 @@
 // Minimal Jira Cloud REST v3 client for the deterministic scripts (extract fetch, escalation,
 // ops tickets, verification). Agents use the Atlassian MCP server interactively; scripts use this.
-export interface JiraIssue { key: string; summary: string; text: string; status: string; labels: string[]; created?: string }
+export interface JiraIssue { key: string; summary: string; text: string; status: string; labels: string[]; created?: string; storyPoints?: number; estimateHours?: number }
 
 type Adf = { type: string; text?: string; content?: Adf[]; attrs?: Record<string, unknown> };
 
@@ -27,8 +27,26 @@ export class Jira {
     return (res.status === 204 ? undefined : await res.json()) as T;
   }
 
+  private pointsField?: Promise<string | undefined>;
+  /** The story points field: JIRA_STORY_POINTS_FIELD, else the field named "Story Points" / "Story point estimate". */
+  storyPointsField(): Promise<string | undefined> {
+    this.pointsField ??= process.env.JIRA_STORY_POINTS_FIELD
+      ? Promise.resolve(process.env.JIRA_STORY_POINTS_FIELD)
+      : this.req<{ id: string; name: string }[]>("GET", "/rest/api/3/field")
+        .then((fs) => (fs.find((f) => /^story points?$/i.test(f.name)) ?? fs.find((f) => /^story point estimate$/i.test(f.name)))?.id)
+        .catch(() => undefined);
+    return this.pointsField;
+  }
+
+  private sizing(fields: any, pointsField?: string): Pick<JiraIssue, "storyPoints" | "estimateHours"> {
+    const points = pointsField ? fields[pointsField] : undefined;
+    const est = fields.timeoriginalestimate;
+    return { ...(typeof points === "number" ? { storyPoints: points } : {}), ...(typeof est === "number" ? { estimateHours: est / 3600 } : {}) };
+  }
+
   async getIssue(key: string): Promise<JiraIssue> {
-    const r = await this.req<any>("GET", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description,status,labels,created`);
+    const pf = await this.storyPointsField();
+    const r = await this.req<any>("GET", `/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description,status,labels,created,timeoriginalestimate${pf ? `,${pf}` : ""}`);
     return {
       key: r.key,
       summary: r.fields.summary ?? "",
@@ -36,6 +54,7 @@ export class Jira {
       status: r.fields.status?.name ?? "",
       labels: r.fields.labels ?? [],
       created: r.fields.created,
+      ...this.sizing(r.fields, pf),
     };
   }
 
@@ -44,8 +63,9 @@ export class Jira {
   }
 
   async search(jql: string, maxResults = 50): Promise<JiraIssue[]> {
-    const r = await this.req<any>("POST", "/rest/api/3/search/jql", { jql, maxResults, fields: ["summary", "status", "labels", "created", "description"] });
-    return (r.issues ?? []).map((i: any) => ({ key: i.key, summary: i.fields.summary, text: adfToText(i.fields.description), status: i.fields.status?.name ?? "", labels: i.fields.labels ?? [], created: i.fields.created }));
+    const pf = await this.storyPointsField();
+    const r = await this.req<any>("POST", "/rest/api/3/search/jql", { jql, maxResults, fields: ["summary", "status", "labels", "created", "description", "timeoriginalestimate", ...(pf ? [pf] : [])] });
+    return (r.issues ?? []).map((i: any) => ({ key: i.key, summary: i.fields.summary, text: adfToText(i.fields.description), status: i.fields.status?.name ?? "", labels: i.fields.labels ?? [], created: i.fields.created, ...this.sizing(i.fields, pf) }));
   }
 
   async createIssue(project: string, summary: string, description: string, labels: string[], issueType = "Bug"): Promise<string> {
