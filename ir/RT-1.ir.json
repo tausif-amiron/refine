@@ -1,0 +1,89 @@
+{
+  "entities": [],
+  "external_systems": [],
+  "limits": [],
+  "modules": [
+    {
+      "anchor": {
+        "quote": "Unsupported operators throw a descriptive error (same style as the existing or/and error in generateFilter), or are mapped correctly where json-server supports them.",
+        "section": "Acceptance criteria"
+      },
+      "behaviours": [
+        "generateFilter([{ field: \"price\", operator: \"gt\", value: 10 }]) never returns { price: 10 }. It either returns a key json-server treats as greater-than, or throws an error. Which one depends on the answer to the operator-mapping question.",
+        "Every CrudOperators value from @refinedev/core (eq, ne, eqs, nes, lt, gt, lte, gte, in, nin, ina, nina, contains, ncontains, containss, ncontainss, between, nbetween, null, nnull, startswith, nstartswith, startswiths, nstartswiths, endswith, nendswith, endswiths, nendswiths, or, and) has a unit test in packages/simple-rest/test. Each test checks either the exact mapped query key or that a descriptive error is thrown.",
+        "An operator that is not supported throws an Error whose message starts with \"[@refinedev/simple-rest]: `operator: <operator>` is not supported.\" and names the operator. This matches the style of the existing or/and error in generateFilter.",
+        "No operator other than eq produces a bare `${field}` key (an equality filter) in the generateFilter output.",
+        "Unchanged: an eq filter still maps to field=value. generateFilter([{ field: \"name\", operator: \"eq\", value: \"John\" }]) returns { name: \"John\" }, and mapOperator(\"eq\") returns \"\".",
+        "Unchanged: ne, gte and lte still map to _ne, _gte and _lte, and contains still maps to _like. For example, { field: \"age\", operator: \"gte\", value: 25 } gives { age_gte: 25 }.",
+        "Unchanged: or and and filters still throw the exact existing message \"[@refinedev/simple-rest]: `operator: <op>` is not supported. You can create custom data provider. https://refine.dev/docs/api-reference/core/providers/data-provider/#creating-a-data-provider\".",
+        "Unchanged: generateFilter() with no filters returns {}. Conditional filters without a field are ignored as before. The existing passing tests in packages/simple-rest/test/utils/generateFilter.spec.ts and packages/simple-rest/test/walk/generateFilter.walk.spec.ts still pass.",
+        "Unchanged: the getList and getMany request URLs in packages/simple-rest/src/provider.ts do not change for filters that use eq, ne, gte, lte or contains.",
+        "A changeset file in .changeset/ marks @refinedev/simple-rest for a patch release and describes the fix for unsupported or unmapped filter operators."
+      ],
+      "files": [
+        "packages/simple-rest/src/utils/mapOperator.ts",
+        "packages/simple-rest/src/utils/generateFilter.ts",
+        ".changeset/simple-rest-unsupported-filter-operators.md"
+      ],
+      "name": "simple-rest filter operator mapping",
+      "tests": [
+        "packages/simple-rest/test/utils/mapOperator.spec.ts",
+        "packages/simple-rest/test/utils/generateFilter.spec.ts"
+      ]
+    }
+  ],
+  "questions": [
+    {
+      "affects": "The query string that getList and getMany send for every non-eq filter, and which filters raise an error in apps that use @refinedev/simple-rest.",
+      "if_wrong": "If we map an operator to a suffix the backend ignores (for example _gt on json-server 0.x), the filter is silently dropped and users get wrong results again. If we throw for an operator the backend does support, apps that could work lose that filter.",
+      "q": "Which CrudOperators should be mapped to json-server query suffixes, and which should throw? json-server 0.x (the version simple-rest is documented against) supports _gte, _lte, _ne and _like, but not _gt or _lt. For example: should gt and lt throw, or be mapped to _gt/_lt (json-server 1.x)? Should eqs, nes, in, nin, null, startswith and the others throw?"
+    },
+    {
+      "affects": "The public API of @refinedev/simple-rest: anyone who calls mapOperator directly or builds a custom provider with it, and the semver level of the release.",
+      "if_wrong": "If mapOperator starts throwing in a patch, external callers that relied on it returning \"\" could break without warning. If only generateFilter throws, direct mapOperator callers still get the silent equality bug.",
+      "q": "mapOperator is publicly exported from @refinedev/simple-rest (src/index.ts re-exports ./utils). Should mapOperator itself throw for unsupported operators? Or should it keep returning a string (for example undefined or a sentinel) and let generateFilter throw? Is a newly thrown error acceptable in a patch changeset?"
+    },
+    {
+      "affects": "The error that developers see when they use an unsupported filter with simple-rest, and the exact strings the unit tests check.",
+      "if_wrong": "If the wording differs from what the team expects, the tests pin the wrong message and need rework. Developers may also get an unhelpful message.",
+      "q": "What should the error message say for unsupported field operators? Should it reuse the or/and wording exactly (\"... is not supported. You can create custom data provider. <docs link>\"), or use different text?"
+    },
+    {
+      "affects": "Full-text search filters (field \"q\") in getList and getMany.",
+      "if_wrong": "If q is not exempt, existing search UIs that send q with an operator other than eq or contains would start throwing. If it is exempt but should not be, a misused operator on q stays silent.",
+      "q": "The special \"q\" field is passed through as q=value whatever its operator. Should it stay exempt from the new unsupported-operator error, for example { field: \"q\", operator: \"gt\" }?"
+    },
+    {
+      "affects": "Filters built at runtime without an operator (for example from untyped JS or URL sync), and the existing mapOperator.spec.ts cases.",
+      "if_wrong": "If they throw, filters that are missing an operator (which currently act as eq) would break existing apps. If they still return \"\", unknown operators keep turning silently into equality filters.",
+      "q": "Today mapOperator returns \"\" for invalid inputs such as \"unsupported\", \"\", undefined and null, and an existing test asserts this. Should these values now throw too? Or should undefined or empty keep mapping to equality?"
+    }
+  ],
+  "roles": [],
+  "schema": "ai-sdlc.ir.v1",
+  "screens": [],
+  "sealed_acceptance_criteria": [
+    {
+      "id": "AC-1",
+      "text": "Unsupported operators throw a descriptive error (same style as the existing or/and error in generateFilter), or are mapped correctly where json-server supports them."
+    },
+    {
+      "id": "AC-2",
+      "text": "eq still maps to field=value."
+    },
+    {
+      "id": "AC-3",
+      "text": "Unit tests in packages/simple-rest/test cover every CrudOperators value."
+    },
+    {
+      "id": "AC-4",
+      "text": "Changeset added (patch)."
+    }
+  ],
+  "sealed_hash": "sha256:d3eede6688b34cbfc543c87547fb5be57c49c3e75f41bb00e2f6afa33b5aff41",
+  "services": [],
+  "ticket": "RT-1",
+  "ticket_hash": "sha256:0f1892991542e77cb1dd6ad0054e634a2668dbe3d7cc2ca73a0a080709362096",
+  "title": "[Bug] simple-rest: gt/lt and other unmapped operators silently become equality filters",
+  "unplaced": []
+}
