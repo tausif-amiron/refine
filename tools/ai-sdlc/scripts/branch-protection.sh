@@ -9,6 +9,11 @@ checks='["checks","secrets","sast"]'
 
 case "${1:-verify}" in
   apply)
+    # Merge commits only, head branch deleted on merge (docs/CONVENTIONS.md#merging). Repo settings, so this also
+    # works on plans where branch protection is unavailable (private repos on GitHub Free).
+    gh api -X PATCH "repos/$repo" -F allow_merge_commit=true -F allow_squash_merge=false \
+      -F allow_rebase_merge=false -F delete_branch_on_merge=true >/dev/null
+    echo "merge settings applied to $repo: merge commits only, delete branch on merge"
     gh api -X PUT "repos/$repo/branches/$branch/protection" --input - <<JSON
 {
   "required_status_checks": { "strict": true, "contexts": $checks },
@@ -28,8 +33,11 @@ JSON
     echo "protection applied to $repo@$branch"
     ;;
   verify)
-    p=$(gh api "repos/$repo/branches/$branch/protection")
     fail=0
+    r=$(gh api "repos/$repo")
+    jq -e '.allow_merge_commit == true and .allow_squash_merge == false and .allow_rebase_merge == false' <<<"$r" >/dev/null || { echo "merge settings: only merge commits must be allowed"; fail=1; }
+    jq -e '.delete_branch_on_merge == true' <<<"$r" >/dev/null || { echo "merge settings: head branches are not deleted on merge"; fail=1; }
+    p=$(gh api "repos/$repo/branches/$branch/protection" 2>/dev/null) || { echo "branch protection: none on $branch (or unavailable on this GitHub plan)"; p='{}'; fail=1; }
     jq -e '.required_pull_request_reviews.required_approving_review_count >= 1' <<<"$p" >/dev/null || { echo "missing: required approving review"; fail=1; }
     jq -e '.required_pull_request_reviews.require_code_owner_reviews == true' <<<"$p" >/dev/null || { echo "missing: code owner review"; fail=1; }
     jq -e '.enforce_admins.enabled == true' <<<"$p" >/dev/null || { echo "missing: enforce for admins"; fail=1; }

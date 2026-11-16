@@ -147,7 +147,8 @@ export function stackMessage(s: StackInfo, style: "markdown" | "text"): string {
   const below = s.parent ? `#${s.parent.number}` : `the PR for \`${s.base}\``;
   const target = s.parent?.base ?? s.recordedBase ?? "its target";
   const text = `This targets \`${s.base}\`, which ${s.parent ? `has its own PR (${below}) into` : "was cut from"} \`${target}\`. ` +
-    `Merge ${below} first. Then re-target this PR to \`${target}\` before merging it, or delete \`${s.base}\` when ${below} merges (GitHub then re-targets this PR itself). ` +
+    `Merge ${below} first, but re-target this PR to \`${target}\` before you merge ${below}: merging it deletes \`${s.base}\`, and GitHub closes a PR whose base branch is deleted. ` +
+    `Merge both with a merge commit, not squash or rebase (docs/CONVENTIONS.md#merging). ` +
     `Merged into \`${s.base}\` after ${below} has merged, this change would never reach \`${target}\`.`;
   return style === "markdown" ? `> **Stacked PR.** ${text}` : `Stacked PR: ${text}`;
 }

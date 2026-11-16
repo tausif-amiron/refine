@@ -23,11 +23,11 @@ const STAGE_NAME: Record<Stage, string> = { extract: "Extract", plan: "Plan", bu
 const STATE_WORD: Record<Exclude<StageState, "progress">, string> = { started: "started", passed: "passed", failed: "failed", waiting: "waiting for you" };
 
 export class HttpDashboardApi implements DashboardApi {
-  constructor(private base: string, private key?: string, private fetchImpl: typeof fetch = fetch) {}
+  constructor(private base: string, private key?: string, private fetchImpl: typeof fetch = fetch, private runId?: string) {}
   private async call<T>(method: string, path: string, body?: unknown): Promise<T> {
     const res = await this.fetchImpl(`${this.base.replace(/\/$/, "")}/api${path}`, {
       method, signal: AbortSignal.timeout(15_000),
-      headers: { "content-type": "application/json", ...(this.key ? { authorization: `Bearer ${this.key}` } : {}) },
+      headers: { "content-type": "application/json", ...(this.key ? { authorization: `Bearer ${this.key}` } : {}), ...(this.runId ? { "x-paperclip-run-id": this.runId } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const text = await res.text();
@@ -43,10 +43,21 @@ export class HttpDashboardApi implements DashboardApi {
   async update(id: string, patch: Record<string, unknown>) { await this.call("PATCH", `/issues/${id}`, patch); }
 }
 
+/**
+ * The dashboard's Paperclip client. Inside a Paperclip run it posts as the run's agent (the run's key and id, which
+ * Paperclip gives every step): posted as the board, its comments counted as new user comments, and Paperclip then
+ * refused the run's own question set until they were delivered (RT-1, 2026-11-16). Outside a run: the board.
+ */
+export function dashboardClient(url: string, env: NodeJS.ProcessEnv = process.env, fetchImpl: typeof fetch = fetch): HttpDashboardApi {
+  return env.PAPERCLIP_RUN_ID
+    ? new HttpDashboardApi(env.PAPERCLIP_API_URL ?? url, env.PAPERCLIP_API_KEY, fetchImpl, env.PAPERCLIP_RUN_ID)
+    : new HttpDashboardApi(url, env.PAPERCLIP_BOARD_KEY, fetchImpl);
+}
+
 export function dashboardFor(root: string, cfg: Config, api?: DashboardApi, warn: (m: string) => void = (m) => process.stderr.write(`${m}\n`)) {
   const pc = cfg.paperclip;
   const on = Boolean(pc?.url && pc.companyId && pc.report !== false);
-  const client = api ?? (on ? new HttpDashboardApi(pc!.url, process.env.PAPERCLIP_BOARD_KEY) : undefined);
+  const client = api ?? (on ? dashboardClient(pc!.url) : undefined);
   const ids = new Map<string, string>();
   let owner: Promise<string | undefined> | undefined;
   const ownerId = () => (owner ??= client!.whoAmI().catch(() => undefined));
