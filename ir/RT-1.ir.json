@@ -35,26 +35,31 @@
   "questions": [
     {
       "affects": "The query string that getList and getMany send for every non-eq filter, and which filters raise an error in apps that use @refinedev/simple-rest.",
+      "answer": "Keep the four existing suffixes (ne→_ne, gte→_gte, lte→_lte, contains→_like) and keep eq→\"\". Also allow `in`→\"\", because an array value already goes out as repeated keys (field=a&field=b), which json-server 0.x treats as OR. Every other operator throws, including gt, lt, eqs, nes, nin, ina, nina, null, nnull, between, nbetween, the case-sensitive variants, and all the starts/ends/ncontains forms.",
       "if_wrong": "If we map an operator to a suffix the backend ignores (for example _gt on json-server 0.x), the filter is silently dropped and users get wrong results again. If we throw for an operator the backend does support, apps that could work lose that filter.",
       "q": "Which CrudOperators should be mapped to json-server query suffixes, and which should throw? json-server 0.x (the version simple-rest is documented against) supports _gte, _lte, _ne and _like, but not _gt or _lt. For example: should gt and lt throw, or be mapped to _gt/_lt (json-server 1.x)? Should eqs, nes, in, nin, null, startswith and the others throw?"
     },
     {
       "affects": "The public API of @refinedev/simple-rest: anyone who calls mapOperator directly or builds a custom provider with it, and the semver level of the release.",
+      "answer": "Leave mapOperator's behaviour and `string` return type unchanged. In generateFilter, check the operator against the allow-list from Q-1 before calling mapOperator, and throw there.",
       "if_wrong": "If mapOperator starts throwing in a patch, external callers that relied on it returning \"\" could break without warning. If only generateFilter throws, direct mapOperator callers still get the silent equality bug.",
       "q": "mapOperator is publicly exported from @refinedev/simple-rest (src/index.ts re-exports ./utils). Should mapOperator itself throw for unsupported operators? Or should it keep returning a string (for example undefined or a sentinel) and let generateFilter throw? Is a newly thrown error acceptable in a patch changeset?"
     },
     {
       "affects": "The error that developers see when they use an unsupported filter with simple-rest, and the exact strings the unit tests check.",
+      "answer": "Reuse the existing template exactly, with the operator name substituted: `[@refinedev/simple-rest]: \\`operator: ${operator}\\` is not supported. You can create custom data provider. https://refine.dev/docs/api-reference/core/providers/data-provider/#creating-a-data-provider`.",
       "if_wrong": "If the wording differs from what the team expects, the tests pin the wrong message and need rework. Developers may also get an unhelpful message.",
       "q": "What should the error message say for unsupported field operators? Should it reuse the or/and wording exactly (\"... is not supported. You can create custom data provider. <docs link>\"), or use different text?"
     },
     {
       "affects": "Full-text search filters (field \"q\") in getList and getMany.",
+      "answer": "Keep q exempt: leave the `field === \"q\"` early return before any operator check, so q passes through as q=value whatever its operator.",
       "if_wrong": "If q is not exempt, existing search UIs that send q with an operator other than eq or contains would start throwing. If it is exempt but should not be, a misused operator on q stays silent.",
       "q": "The special \"q\" field is passed through as q=value whatever its operator. Should it stay exempt from the new unsupported-operator error, for example { field: \"q\", operator: \"gt\" }?"
     },
     {
       "affects": "Filters built at runtime without an operator (for example from untyped JS or URL sync), and the existing mapOperator.spec.ts cases.",
+      "answer": "In generateFilter, treat a missing operator (undefined or null) as eq, so it maps to field=value as today. Throw for any present string outside the allow-list, including \"\" and \"unsupported\". If mapOperator stays unchanged (Q-2 option 0), its spec cases at mapOperator.spec.ts:41-46 stay as they are.",
       "if_wrong": "If they throw, filters that are missing an operator (which currently act as eq) would break existing apps. If they still return \"\", unknown operators keep turning silently into equality filters.",
       "q": "Today mapOperator returns \"\" for invalid inputs such as \"unsupported\", \"\", undefined and null, and an existing test asserts this. Should these values now throw too? Or should undefined or empty keep mapping to equality?"
     }
