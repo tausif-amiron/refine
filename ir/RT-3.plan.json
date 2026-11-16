@@ -1,0 +1,58 @@
+{
+  "contracts": [],
+  "ir_hash": "sha256:7b8d1dfbf21e9c783652a8d20df5b81e98932ab316d52d799c7d2ea7ee76dc3b",
+  "schema": "ai-sdlc.plan.v1",
+  "ticket": "RT-3",
+  "units": [
+    {
+      "agent": "dev-module",
+      "consumes": [],
+      "dependsOn": [],
+      "exposes": [],
+      "id": "unit-module-generate-filter-for-each-refactor",
+      "ir": {
+        "entities": [],
+        "modules": [
+          "generateFilter forEach refactor"
+        ],
+        "screens": [],
+        "services": []
+      },
+      "kind": "module",
+      "model": "sonnet",
+      "name": "generateFilter forEach refactor",
+      "scope": [
+        "owed.yaml",
+        "packages/simple-rest/src/utils/generateFilter.ts",
+        "packages/simple-rest/test/getList/index.spec.ts",
+        "packages/simple-rest/test/utils/generateFilter.spec.ts"
+      ],
+      "slug": "generate-filter-for-each-refactor"
+    },
+    {
+      "agent": "qa",
+      "consumes": [],
+      "dependsOn": [
+        "unit-module-generate-filter-for-each-refactor"
+      ],
+      "exposes": [],
+      "id": "unit-walk",
+      "ir": {
+        "entities": [],
+        "modules": [
+          "generateFilter forEach refactor"
+        ],
+        "screens": [],
+        "services": []
+      },
+      "kind": "walk",
+      "model": "sonnet",
+      "name": "walk",
+      "scope": [
+        "packages/simple-rest/test/walk/**",
+        "owed.yaml"
+      ],
+      "slug": "walk"
+    }
+  ]
+}
