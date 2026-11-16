@@ -1,0 +1,125 @@
+{
+  "entities": [],
+  "external_systems": [],
+  "limits": [],
+  "modules": [
+    {
+      "anchor": {
+        "quote": "simple-rest: pass meta.signal to the axios call in getList, getMany, getOne and custom (GET).",
+        "section": "Scope"
+      },
+      "behaviours": [
+        "getList passes meta.signal as the `signal` option in the axios request config, together with the existing `headers` option.",
+        "getMany passes meta.signal as the `signal` option in the axios request config.",
+        "getOne passes meta.signal as the `signal` option in the axios request config.",
+        "custom with a GET (default) method passes meta.signal as the `signal` option in the axios request config.",
+        "When the AbortController linked to meta.signal is aborted while a getList, getMany, getOne or custom GET request is in flight, the returned promise rejects and the HTTP request is cancelled (proved by a test with an AbortController).",
+        "When meta.signal is already aborted before the call, getList, getMany, getOne and custom GET reject without the request finishing.",
+        "When meta is undefined or meta has no `signal`, the axios config has no `signal` key. For example, getList with pagination mode 'off' and no filters still calls httpClient.get(url, { headers: undefined }) exactly as before, and the existing simple-rest tests pass with unchanged expectations.",
+        "The meta.headers and meta.method handling in getList, getMany and getOne is unchanged.",
+        "create, update and deleteOne do not read meta.signal and send the same request config as before.",
+        "custom with method post, put, patch or delete sends the same request config as before.",
+        "The exported `dataProvider(apiUrl, httpClient)` signature and the `axiosInstance` export are unchanged.",
+        "documentation/docs/data/packages/simple-rest/index.md says that getList, getMany, getOne and custom (GET) forward meta.signal to axios, so that requests are cancelled when the query is cancelled.",
+        "A changeset file in .changeset/ declares a `minor` bump for \"@refinedev/simple-rest\" and describes meta.signal forwarding."
+      ],
+      "files": [
+        "packages/simple-rest/src/provider.ts",
+        "documentation/docs/data/packages/simple-rest/index.md",
+        ".changeset/simple-rest-abort-signal.md"
+      ],
+      "name": "simple-rest signal forwarding",
+      "tests": [
+        "packages/simple-rest/test/signal/index.spec.ts",
+        "packages/simple-rest/test/getList/index.spec.ts",
+        "packages/simple-rest/test/getOne/index.spec.ts",
+        "packages/simple-rest/test/custom/index.spec.ts"
+      ]
+    },
+    {
+      "anchor": {
+        "quote": "rest: forward meta.signal to its HTTP client for read methods.",
+        "section": "Scope"
+      },
+      "behaviours": [
+        "getList passes params.meta.signal as the ky `signal` option.",
+        "getOne passes params.meta.signal as the ky `signal` option.",
+        "getMany (when configured in options) passes params.meta.signal as the ky `signal` option.",
+        "custom with method GET passes params.meta.signal as the ky `signal` option.",
+        "When the AbortController linked to meta.signal is aborted while a getList, getOne, getMany or custom GET request is in flight, the returned promise rejects and the request is cancelled (proved by a test with an AbortController against a delayed nock response).",
+        "When meta is undefined or meta has no `signal`, the read methods send the same request as before (same endpoint, headers and searchParams), and the existing packages/rest tests pass with unchanged expectations.",
+        "create, createMany, update, updateMany, deleteOne and deleteMany do not read meta.signal and behave as before.",
+        "The built-in options in packages/rest/src/data-providers (simple-rest, nestjsx-crud, strapi-v4) inherit signal forwarding through createDataProvider, with no change to their option files.",
+        "The exported `createDataProvider(apiURL, baseOptions, kyOptions)` signature and its `{ kyInstance, dataProvider }` return shape are unchanged.",
+        "documentation/docs/data/packages/rest-data-provider/index.md says that the read methods forward meta.signal to ky, so that requests are cancelled when the query is cancelled.",
+        "A changeset file in .changeset/ declares a `minor` bump for \"@refinedev/rest\" and describes meta.signal forwarding."
+      ],
+      "files": [
+        "packages/rest/src/create-data-provider.ts",
+        "documentation/docs/data/packages/rest-data-provider/index.md",
+        ".changeset/rest-abort-signal.md"
+      ],
+      "name": "rest signal forwarding",
+      "tests": [
+        "packages/rest/test/methods/signal.spec.ts",
+        "packages/rest/test/methods/getList.spec.ts",
+        "packages/rest/test/methods/getOne.spec.ts",
+        "packages/rest/test/methods/getMany.spec.ts",
+        "packages/rest/test/methods/custom.spec.ts"
+      ]
+    }
+  ],
+  "questions": [
+    {
+      "affects": "Which requests in @refinedev/rest (packages/rest/src/create-data-provider.ts) can be cancelled, and how far the rest module's scope and tests reach.",
+      "if_wrong": "If custom GET is left out, useCustom requests in rest keep running after unmount, unlike simple-rest. If the signal is added to custom mutations (post/put/patch/delete), a write could be aborted halfway, and the server may apply the change while the client sees a failure.",
+      "q": "Which @refinedev/rest methods count as 'read methods': getList, getOne and getMany only, or also custom when its method is GET? Also, should custom forward the signal for every HTTP method, or only for GET?"
+    },
+    {
+      "affects": "Whether users see an 'Error (status code: undefined)' toast when a request is cancelled, and whether files outside the two provider modules (core hooks or the simple-rest axios interceptor) are in scope.",
+      "if_wrong": "If we rely only on TanStack's behaviour and some path (for example a manual queryClient.cancelQueries without revert, or a signal aborted by user code) still surfaces the error, users get false error toasts. If we add a core guard when one is not wanted, we break the 'No core changes expected' scope and change notification behaviour for every data provider.",
+      "q": "For 'Aborted requests don't show error notifications': is it enough to rely on TanStack Query reverting a cancelled query (so useList/useOne never reach isError), or must a provider-level or core-level guard also stop notifications when an abort error (axios CanceledError / ERR_CANCELED, ky AbortError) reaches the hooks? Note that the ticket says 'No core changes expected', and the simple-rest axios interceptor (packages/simple-rest/src/utils/axios.ts) turns every error, including cancellations, into an HttpError with an undefined message and statusCode."
+    },
+    {
+      "affects": "Which test files the units must write, and whether core test files (packages/core) come into scope even though no core source changes.",
+      "if_wrong": "If provider-level tests are accepted but the team expected hook-level proof, AC-1 could be judged unmet. If hook-level tests are required but not planned, the build unit has no core test file in its SCOPE and cannot satisfy the criterion.",
+      "q": "Must 'Changing filters or unmounting aborts the in-flight request' be proved by an integration test that drives useList/useOne through @refinedev/core (changing filters, unmounting), or are provider-level tests enough, where a test passes a signal from its own AbortController and aborts it?"
+    },
+    {
+      "affects": "Which documentation files are in the modules' SCOPE, and where users learn that cancellation is supported.",
+      "if_wrong": "If the wrong page is updated, the docs acceptance criterion is judged unmet, or authors of custom data providers never learn they should read meta.signal.",
+      "q": "Which pages are 'Data provider docs': the package pages (documentation/docs/data/packages/simple-rest/index.md and documentation/docs/data/packages/rest-data-provider/index.md), the general data provider page (documentation/docs/data/data-provider/index.md, which does not mention signal today), the package READMEs, or all of them?"
+    }
+  ],
+  "roles": [],
+  "schema": "ai-sdlc.ir.v1",
+  "screens": [],
+  "sealed_acceptance_criteria": [
+    {
+      "id": "AC-1",
+      "text": "Changing filters or unmounting aborts the in-flight request (verified by tests with an AbortController)."
+    },
+    {
+      "id": "AC-2",
+      "text": "Aborted requests don't show error notifications."
+    },
+    {
+      "id": "AC-3",
+      "text": "Behaviour is unchanged when no signal is present."
+    },
+    {
+      "id": "AC-4",
+      "text": "Data provider docs mention meta.signal support."
+    },
+    {
+      "id": "AC-5",
+      "text": "Changesets (minor) for simple-rest and rest."
+    }
+  ],
+  "sealed_hash": "sha256:91011c5f4cb60621e5d3bdd9a1bfae0eb0303b4d723a673d001732bdaf81a416",
+  "services": [],
+  "ticket": "RT-7",
+  "ticket_hash": "sha256:47bde28c90e38ba1bad38457ee3c70ba7fa8097ac30524e5f682af1a40881250",
+  "title": "simple-rest & rest: forward meta.signal to HTTP client for request cancellation",
+  "unplaced": []
+}
