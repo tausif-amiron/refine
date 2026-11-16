@@ -144,9 +144,22 @@ any step or gate. Jira stays the source of truth, code still decides pass or fai
   run first switches to its ticket's branch; a new ticket's branch is cut from `<pr.remote>/<pr.base>` (fetched; default
   the remote's default branch), never from whatever is checked out, so queued tickets do not stack. Uncommitted changes
   to tracked files stop the run with a note on the issue.
-- **People**: open IR questions become a Paperclip question set on the issue (`ask_user_questions`, one free-text
-  answer per question); answering it wakes the runner, which writes the answers into the IR, commits them and goes on
-  to plan and build. An escalated unit, a failed step, and opening the PR each become a
+- **People**: open IR questions become a Paperclip question set on the issue (`ask_user_questions`). Before the first
+  ask, the advisor agent (read-only, Opus; `ai-sdlc suggest T`, `orchestrator/advise.ts`) writes `ir/<T>.advice.json`:
+  2-4 options per question, one recommended, each with its reasoning, `path:line` evidence (checked to exist), what
+  breaks if it is wrong and a confidence. Each question then shows the recommended option first, the alternatives, and
+  "Your own answer" (free text); the reasoning is in each option's description. If the advisor fails, the questions
+  are asked without options. A picked option's answer (plus any note) or the developer's own text goes into the IR;
+  answering wakes the runner, which commits the answers and goes on to plan and build.
+- **Questioning a recommendation** (#advice-commands): a person types a command as a comment on the issue; the
+  comment wakes the runner, which answers as the agent. `/why Q-n`: the full case (reasoning, evidence,
+  assumptions, weakest link). `/grill Q-n [doubt]`: an adversarial review that argues for the alternatives and names
+  the code and tests to read before deciding. `/tutor Q-n`: a Socratic session (adapted from Jane Street's MIT
+  socratic-tutor skill); the developer replies in plain comments, `/tutor stop` ends it (Sonnet; `models.tutor`).
+  `/help` lists them. The commands are skills (`.claude/skills/{why,grill,tutor}`), so they also work in Claude Code.
+  Paperclip treats a question set as history once a person comments after it, so after a comment the runner
+  withdraws the old set and asks again; answers given on an older set still count. Only people's comments are read
+  as commands, never the agent's own. An escalated unit, a failed step, and opening the PR each become a
   `request_board_approval` on the issue, which is then `blocked`. Approving wakes the runner: for the PR it runs `pr`
   (one approval, one PR), otherwise it re-checks and continues. Rejecting parks the issue in `backlog` with the note.
   An open PR moves the issue to `in_review`; approving and merging the PR itself stays on GitHub.

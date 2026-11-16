@@ -7,6 +7,7 @@ import { doctor, formatFindings } from "./doctor.ts";
 import { withGateway } from "./gateway.ts";
 import { dashboardFor, type Stage } from "./dashboard.ts";
 import { cliStepRunner, HttpPaperclip, paperclipRun, paperclipSync } from "./paperclip.ts";
+import { adviceCommand, adviseTicket } from "./advise.ts";
 import { cliHint, loadConfig, repoRoot } from "./config.ts";
 import { extractTicket } from "./extract.ts";
 import { commitAll, ensureBranch, ticketBranch, headCommit, useTicketBranch } from "./git.ts";
@@ -79,7 +80,8 @@ async function main() {
       if (!e.PAPERCLIP_API_URL || !e.PAPERCLIP_RUN_ID || !e.PAPERCLIP_AGENT_ID || !e.PAPERCLIP_COMPANY_ID) throw new Error("paperclip-run runs inside a Paperclip process agent (PAPERCLIP_API_URL, PAPERCLIP_RUN_ID, PAPERCLIP_AGENT_ID and PAPERCLIP_COMPANY_ID are not set). See docs/ARCHITECTURE.md#paperclip.");
       const api = new HttpPaperclip(e.PAPERCLIP_API_URL, e.PAPERCLIP_API_KEY, e.PAPERCLIP_RUN_ID);
       const useBranch = (t: string) => useTicketBranch(root, ticketBranch(cfg.branchPrefix, t), { remote: cfg.pr?.remote ?? "origin", base: cfg.pr?.base });
-      out(await paperclipRun({ root, api, runStep: cliStepRunner(root), useBranch, runId: e.PAPERCLIP_RUN_ID, agentId: e.PAPERCLIP_AGENT_ID, companyId: e.PAPERCLIP_COMPANY_ID }));
+      const runCommand = (t: string, command: Parameters<typeof adviceCommand>[0]["command"], text: string) => adviceCommand({ root, cfg, ticket: t, runner, command, reply: command ? undefined : text });
+      out(await paperclipRun({ root, api, runStep: cliStepRunner(root), useBranch, runCommand, runId: e.PAPERCLIP_RUN_ID, agentId: e.PAPERCLIP_AGENT_ID, companyId: e.PAPERCLIP_COMPANY_ID }));
       return;
     }
     case "paperclip-sync": {
@@ -120,6 +122,15 @@ async function main() {
         await dash.stage(t, "extract", "waiting", `Answer ${open.length} question(s) in ir/${t}.ir.json, then plan.\n${open.map((q, i) => `${i + 1}. ${q.q}`).join("\n")}`);
         process.exitCode = 3;
       } else await dash.stage(t, "extract", "passed", `IR sealed with ${r.ir!.sealed_acceptance_criteria.length} acceptance criteria.`);
+      return;
+    }
+    case "suggest": {
+      // Recommended answers for the open IR questions (ir/<T>.advice.json); a person still decides.
+      const t = needTicket();
+      await dash.stage(t, "extract", "progress", `Recommending answers to the open questions (advisor agent, ${cfg.models.advisor ?? "opus"}).`);
+      const r = await adviseTicket({ root, cfg, ticket: t, runner });
+      if (r.issues.length) { out(`No recommendations (the questions are asked without them):\n${r.issues.map((i) => `  ${i}`).join("\n")}`); process.exitCode = 1; return; }
+      out(r.advice ? `Recommended answers written: ir/${t}.advice.json (${r.advice.questions.length} question(s))` : "No open questions.");
       return;
     }
     case "plan": {
@@ -251,7 +262,7 @@ async function main() {
       return;
     }
     default:
-      out("commands: doctor | gates | paperclip-sync | paperclip-run | extract | plan | run | qa | score-probe | score-finalize | pr | review | release | ops-alert | ops-verify | learn");
+      out("commands: doctor | gates | paperclip-sync | paperclip-run | extract | suggest | plan | run | qa | score-probe | score-finalize | pr | review | release | ops-alert | ops-verify | learn");
       process.exitCode = cmd ? 1 : 0;
   }
 }
