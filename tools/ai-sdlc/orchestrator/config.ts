@@ -55,9 +55,10 @@ export interface Config {
   /** Monorepo: checks and tests per workspace package, for the packages a unit touches (checks/hooks/monorepo.mjs). */
   monorepo?: { packages: "auto" | { name: string; dir: string }[]; checks?: { fast?: string[]; full?: string[] }; tests?: { command: string } };
   /** Where `pr` pushes (git remote, default origin) and the GitHub repo (owner/name) its PRs open on (default: gh's). */
-  pr?: { remote?: string; repo?: string };
+  /** `base`: the branch unattended (Paperclip) runs cut new ticket branches from, on `remote` (default: the remote's default branch). */
+  pr?: { remote?: string; repo?: string; base?: string };
   /** Paperclip control plane, for `paperclip-sync` (runs get their own settings from Paperclip); see orchestrator/paperclip.ts. */
-  paperclip?: { url: string; companyId: string; agentId: string; project?: string; /** Paperclip project for this repo's issues. */ projectId?: string; /** Report stages as the live dashboard (default on). */ report?: boolean };
+  paperclip?: { url: string; companyId: string; agentId: string; project?: string; /** Paperclip project for this repo's issues. */ projectId?: string; /** Report stages as the live dashboard (default on). */ report?: boolean; /** paperclip-sync assigns new issues to the runner at once (default: backlog, a person starts them). */ autoStart?: boolean };
   release: { stages: number[]; healthUrl: string; deployCommand: string; rollbackCommand: string; watchMinutes: number; errorRateThreshold: number };
   ops: {
     preApprovedActions: string[];

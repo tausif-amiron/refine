@@ -177,6 +177,7 @@
   },
   "pr": {
     "remote": "fork",
-    "repo": "tausif-amiron/refine"
+    "repo": "tausif-amiron/refine",
+    "base": "main"
   }
 }

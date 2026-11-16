@@ -9,7 +9,7 @@ import { dashboardFor, type Stage } from "./dashboard.ts";
 import { cliStepRunner, HttpPaperclip, paperclipRun, paperclipSync } from "./paperclip.ts";
 import { cliHint, loadConfig, repoRoot } from "./config.ts";
 import { extractTicket } from "./extract.ts";
-import { commitAll, ensureBranch, ticketBranch, headCommit } from "./git.ts";
+import { commitAll, ensureBranch, ticketBranch, headCommit, useTicketBranch } from "./git.ts";
 import { loadIr, validateIr } from "./ir.ts";
 import { Jira } from "./jira.ts";
 import { answersComment, moveTicket, postOnce, prComment } from "./jira-sync.ts";
@@ -78,7 +78,8 @@ async function main() {
       const e = process.env;
       if (!e.PAPERCLIP_API_URL || !e.PAPERCLIP_RUN_ID || !e.PAPERCLIP_AGENT_ID || !e.PAPERCLIP_COMPANY_ID) throw new Error("paperclip-run runs inside a Paperclip process agent (PAPERCLIP_API_URL, PAPERCLIP_RUN_ID, PAPERCLIP_AGENT_ID and PAPERCLIP_COMPANY_ID are not set). See docs/ARCHITECTURE.md#paperclip.");
       const api = new HttpPaperclip(e.PAPERCLIP_API_URL, e.PAPERCLIP_API_KEY, e.PAPERCLIP_RUN_ID);
-      out(await paperclipRun({ root, api, runStep: cliStepRunner(root), runId: e.PAPERCLIP_RUN_ID, agentId: e.PAPERCLIP_AGENT_ID, companyId: e.PAPERCLIP_COMPANY_ID }));
+      const useBranch = (t: string) => useTicketBranch(root, ticketBranch(cfg.branchPrefix, t), { remote: cfg.pr?.remote ?? "origin", base: cfg.pr?.base });
+      out(await paperclipRun({ root, api, runStep: cliStepRunner(root), useBranch, runId: e.PAPERCLIP_RUN_ID, agentId: e.PAPERCLIP_AGENT_ID, companyId: e.PAPERCLIP_COMPANY_ID }));
       return;
     }
     case "paperclip-sync": {
@@ -87,8 +88,8 @@ async function main() {
       if (!pc?.url || !pc.companyId || !pc.agentId || !project) throw new Error("paperclip-sync needs paperclip.url, paperclip.companyId, paperclip.agentId (PAPERCLIP_URL, PAPERCLIP_COMPANY_ID, PAPERCLIP_RUNNER_AGENT_ID) and a Jira project (--project or JIRA_PROJECT).");
       const jira = Jira.fromEnv();
       if (!jira) throw new Error("paperclip-sync reads Jira: set JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN.");
-      const r = await paperclipSync({ api: new HttpPaperclip(pc.url, process.env.PAPERCLIP_BOARD_KEY), jira, project, readyStatus: cfg.jira.readyStatus, companyId: pc.companyId, agentId: pc.agentId, jiraUrl: process.env.JIRA_BASE_URL?.replace(/\/$/, ""), dryRun: Boolean(flags["dry-run"]) });
-      out(`${flags["dry-run"] ? "Would create" : "Created"}: ${r.created.join(", ") || "none"}\nAlready in Paperclip: ${r.existing.join(", ") || "none"}`);
+      const r = await paperclipSync({ api: new HttpPaperclip(pc.url, process.env.PAPERCLIP_BOARD_KEY), jira, project, readyStatus: cfg.jira.readyStatus, companyId: pc.companyId, agentId: pc.agentId, projectId: pc.projectId, autoStart: pc.autoStart, jiraUrl: process.env.JIRA_BASE_URL?.replace(/\/$/, ""), dryRun: Boolean(flags["dry-run"]) });
+      out(`${new Date().toISOString()} ${flags["dry-run"] ? "Would create" : "Created"}: ${r.created.join(", ") || "none"}${r.created.length && !pc.autoStart && !flags["dry-run"] ? " (in the backlog; assign one to the agent to start it)" : ""}\nAlready in Paperclip: ${r.existing.join(", ") || "none"}`);
       return;
     }
     case "doctor": {
