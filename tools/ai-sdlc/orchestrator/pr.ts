@@ -232,6 +232,17 @@ export function replaceScore(body: string, score: string): string {
   return re.test(body) ? body.replace(re, `${PR_SCORE_START}\n${score}\n${PR_SCORE_END}`) : `${PR_SCORE_START}\n${score}\n${PR_SCORE_END}\n\n${body}`;
 }
 
+/**
+ * The git push for a PR. With GH_TOKEN set (a Paperclip run's pr step, from a Paperclip secret), a one-off credential
+ * helper reads it from the environment, so the token is never in the command, a config file or the output.
+ */
+export function pushCommand(remote: string, branch: string, vars: NodeJS.ProcessEnv = process.env): string {
+  const push = `push -u '${remote}' '${branch}'`;
+  if (!vars.GH_TOKEN) return push;
+  const helper = `!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f`;
+  return `-c credential.helper= -c 'credential.helper=${helper}' ${push}`;
+}
+
 export function openPr(o: { root: string; ticket: string; cfg: Config; base?: string; dryRun?: boolean; gh?: Gh }): { url?: string; body: string; base: string; stack?: StackInfo } {
   const { root, ticket, cfg } = o;
   const ir = loadIr(root, ticket);
@@ -292,7 +303,7 @@ export function openPr(o: { root: string; ticket: string; cfg: Config; base?: st
   writeFileEnsured(bodyFile, body);
   if (o.dryRun) return { body, base, stack };
   const remote = cfg.pr?.remote || "origin";
-  const push = git(root, `push -u '${remote}' '${branch}'`);
+  const push = git(root, pushCommand(remote, branch));
   if (push.code !== 0) throw new Error(`git push to ${remote} failed:\n${push.stderr}`);
   const existing = gh(`pr view '${branch}' --json url -q .url`);
   let url: string;

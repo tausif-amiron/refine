@@ -9,10 +9,12 @@
 // - agents may not name the board as an unblock owner, so waiting on a person is an approval request;
 // - GitHub is isolated inside runs (own gh config, no SSH agent): `pr` needs GH_TOKEN in the agent's environment;
 // - Paperclip's per-run TMPDIR is too deep for tsx's socket, so steps run with TMPDIR=/tmp.
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { WORKFLOW_ROOT } from "./config.ts";
+import { commitAll } from "./git.ts";
+import { stableStringify } from "./util.ts";
 
 export type Step = "extract" | "plan" | "run" | "pr";
 export interface Approval { id: string; status: string; decidedAt?: string; decisionNote?: string; payload: { action: string; ticket: string; title: string } }
@@ -26,8 +28,50 @@ export interface PaperclipApi {
   requestApproval(issueId: string, payload: Approval["payload"], companyId: string, agentId: string): Promise<void>;
   listIssues(companyId: string): Promise<{ id: string; title: string }[]>;
   createIssue(o: { companyId: string; title: string; description: string; assigneeAgentId: string }): Promise<{ id: string; identifier?: string }>;
+  interactions(issueId: string): Promise<Interaction[]>;
+  askQuestions(issueId: string, title: string, questions: { id: string; prompt: string; helpText?: string }[]): Promise<void>;
 }
 export type StepRunner = (step: Step, ticket: string) => Promise<{ code: number; output: string }>;
+export interface Interaction {
+  id: string; kind: string; status: string;
+  payload?: { questions?: { id: string; prompt: string }[] };
+  result?: { version: 1; answers: { questionId: string; optionIds: string[]; otherText?: string | null }[]; outcome?: string; reason?: string | null; cancelled?: true };
+}
+/**
+ * The environment for one step. The GitHub token (AI_SDLC_GH_TOKEN, bound from a Paperclip secret) reaches only `pr`,
+ * as GH_TOKEN; every other step, and so every agent, runs without it.
+ */
+export function stepEnv(step: Step, vars: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = { ...vars, TMPDIR: "/tmp" };
+  const token = out.AI_SDLC_GH_TOKEN;
+  delete out.AI_SDLC_GH_TOKEN;
+  delete out.GH_TOKEN;
+  if (step === "pr" && token) out.GH_TOKEN = token;
+  return out;
+}
+
+/** The open IR questions, with stable ids (Q-<n> by position in ir.questions). */
+function openQuestions(root: string, ticket: string): { id: string; prompt: string; helpText?: string }[] {
+  const ir = readJson<{ questions: { q: string; affects?: string; if_wrong?: string; answer?: string }[] }>(join(root, "ir", `${ticket}.ir.json`));
+  return (ir?.questions ?? [])
+    .map((q, i) => ({ id: `Q-${i + 1}`, prompt: q.q, helpText: [q.affects && `Affects: ${q.affects}`, q.if_wrong && `If answered wrongly: ${q.if_wrong}`].filter(Boolean).join("\n") || undefined, open: !q.answer }))
+    .filter((q) => q.open)
+    .map(({ open: _open, ...q }) => q);
+}
+
+/** Write answers into the IR (by Q-<n>). Returns how many were applied. */
+function applyAnswers(root: string, ticket: string, answers: { questionId: string; optionIds: string[]; otherText?: string | null }[]): number {
+  const path = join(root, "ir", `${ticket}.ir.json`);
+  const ir = JSON.parse(readFileSync(path, "utf8")) as { questions: { answer?: string }[] };
+  let n = 0;
+  for (const a of answers) {
+    const i = Number(a.questionId.replace(/^Q-/, "")) - 1;
+    const text = (a.otherText ?? "").trim();
+    if (ir.questions[i] && !ir.questions[i].answer && text) { ir.questions[i].answer = text; n++; }
+  }
+  writeFileSync(path, stableStringify(ir));
+  return n;
+}
 
 /** What a person must do: "answers" (IR questions), "escalation" (finish a unit), "failure" (look at a failed step),
  *  "pr" (agree to open it), "merge" (review and merge it on GitHub). */
@@ -63,7 +107,7 @@ const stepComment = (step: Step, ticket: string, r: { code: number; output: stri
 /** Exit codes that are outcomes, not failures: extract 3 = the IR has questions for a person. */
 const stepOk = (step: Step, code: number) => code === 0 || (step === "extract" && code === 3);
 
-export async function paperclipRun(o: { root: string; api: PaperclipApi; runStep: StepRunner; runId: string; agentId: string; companyId: string; maxSteps?: number }): Promise<string> {
+export async function paperclipRun(o: { root: string; api: PaperclipApi; runStep: StepRunner; runId: string; agentId: string; companyId: string; maxSteps?: number; commit?: (message: string) => void }): Promise<string> {
   const { api } = o;
   const ctx = (await api.getRun(o.runId)).contextSnapshot ?? {};
   if (!ctx.issueId) return "no issue in this run's context; nothing to do";
@@ -106,6 +150,32 @@ export async function paperclipRun(o: { root: string; api: PaperclipApi; runStep
         return "done";
       }
       return waitFor("merge", `Review and merge ${next.url} on GitHub (a person approves the PR itself), then approve here to close this issue.`);
+    }
+    if (next.kind === "person" && next.action === "answers") {
+      const open = openQuestions(o.root, ticket);
+      if (open.length) {
+        const asked = (await api.interactions(issue.id)).filter((i) => i.kind === "ask_user_questions");
+        const same = (i: Interaction) => JSON.stringify((i.payload?.questions ?? []).map((q) => q.prompt)) === JSON.stringify(open.map((q) => q.prompt));
+        const latest = [...asked].reverse().find(same);
+        if (latest?.result) {
+          const r = latest.result;
+          if (r.cancelled || r.outcome || !r.answers.length) {
+            await api.comment(issue.id, `The questions were ${r.outcome ?? "cancelled"}${r.reason ? `: ${r.reason}` : ""}. Parked in the backlog; reassign the issue to resume.`);
+            await api.setStatus(issue.id, "backlog");
+            return "questions not answered; parked";
+          }
+          const n = applyAnswers(o.root, ticket, r.answers);
+          (o.commit ?? ((m: string) => commitAll(o.root, m)))(`docs(ir): answers for ${ticket} from Paperclip\n\n${n} answer(s) given in Paperclip.\n\nTicket: ${ticket}`);
+          await api.comment(issue.id, `Recorded ${n} answer(s) from Paperclip in ir/${ticket}.ir.json.`);
+          continue;
+        }
+        if (!latest) {
+          await api.askQuestions(issue.id, `${ticket}: questions before the build`, open);
+          await api.comment(issue.id, `Waiting for a person: answer the ${open.length} question(s) in the Questions panel of this issue. The build starts when they are answered.`);
+        }
+        await api.setStatus(issue.id, "blocked");
+        return "waiting for answers";
+      }
     }
     const step: Step | undefined = next.kind === "step" ? next.step : next.action === "pr" && prApproved ? "pr" : undefined;
     if (!step) return waitFor(next.kind === "person" ? next.action : "failure", next.kind === "person" ? next.text : "");
@@ -162,6 +232,19 @@ export class HttpPaperclip implements PaperclipApi {
     await this.call("POST", `/companies/${companyId}/approvals`, { type: "request_board_approval", requestedByAgentId: agentId, issueIds: [issueId], payload });
   }
   async listIssues(companyId: string) { const r = await this.call<{ id: string; title: string }[] | { issues: { id: string; title: string }[] }>("GET", `/companies/${companyId}/issues`); return Array.isArray(r) ? r : r.issues ?? []; }
+  async interactions(issueId: string) {
+    const r = await this.call<Interaction[] | { interactions: Interaction[] }>("GET", `/issues/${issueId}/interactions`);
+    return Array.isArray(r) ? r : r.interactions ?? [];
+  }
+  async askQuestions(issueId: string, title: string, questions: { id: string; prompt: string; helpText?: string }[]) {
+    await this.call("POST", `/issues/${issueId}/interactions`, {
+      kind: "ask_user_questions", continuationPolicy: "wake_assignee", title,
+      payload: {
+        version: 1, title, submitLabel: "Send answers",
+        questions: questions.map((q) => ({ id: q.id, prompt: q.prompt, ...(q.helpText ? { helpText: q.helpText } : {}), selectionMode: "single", required: true, options: [{ id: "answer", label: "Your answer", freeText: true }] })),
+      },
+    });
+  }
   createIssue(o: { companyId: string; title: string; description: string; assigneeAgentId: string }) {
     return this.call<{ id: string; identifier?: string }>("POST", `/companies/${o.companyId}/issues`, { title: o.title, description: o.description, assigneeAgentId: o.assigneeAgentId, status: "todo" });
   }
@@ -170,7 +253,7 @@ export class HttpPaperclip implements PaperclipApi {
 /** Run one ai-sdlc step as its own process, exactly as a developer would from the command line. */
 export function cliStepRunner(root: string, env: NodeJS.ProcessEnv = process.env): StepRunner {
   return (step, ticket) => new Promise((resolve) => {
-    const child = spawn(process.execPath, [join(WORKFLOW_ROOT, "bin", "ai-sdlc.mjs"), step, ticket], { cwd: root, env: { ...env, TMPDIR: "/tmp" } });
+    const child = spawn(process.execPath, [join(WORKFLOW_ROOT, "bin", "ai-sdlc.mjs"), step, ticket], { cwd: root, env: stepEnv(step, env) });
     let output = "";
     child.stdout.on("data", (d) => { output += d; });
     child.stderr.on("data", (d) => { output += d; });

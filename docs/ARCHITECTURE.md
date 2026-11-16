@@ -135,12 +135,16 @@ any step or gate. Jira stays the source of truth, code still decides pass or fai
   `["<repo>/tools/ai-sdlc/bin/ai-sdlc.mjs", "paperclip-run"]`, `cwd` the repository. Each run acts only on the issue
   that woke it (`orchestrator/paperclip.ts`): it runs `extract`, `plan` and `run` (build and QA) as needed, comments
   each step's exit code and output, and stops when a person is needed.
-- **People**: open IR questions, an escalated unit, a failed step, and opening the PR each become a
+- **People**: open IR questions become a Paperclip question set on the issue (`ask_user_questions`, one free-text
+  answer per question); answering it wakes the runner, which writes the answers into the IR, commits them and goes on
+  to plan and build. An escalated unit, a failed step, and opening the PR each become a
   `request_board_approval` on the issue, which is then `blocked`. Approving wakes the runner: for the PR it runs `pr`
   (one approval, one PR), otherwise it re-checks and continues. Rejecting parks the issue in `backlog` with the note.
   An open PR moves the issue to `in_review`; approving and merging the PR itself stays on GitHub.
-- **Environment**: Paperclip isolates GitHub inside runs, so give the runner `GH_TOKEN` (a token limited to the
-  repository) for `pr`; Jira and gateway credentials (`JIRA_*`, `LITELLM_*`) likewise go in the agent's environment
+- **Environment**: Paperclip isolates GitHub inside runs. Store a fine-grained token (only the fork's repository;
+  Contents and Pull requests: read and write) as a Paperclip secret bound to the agent as `AI_SDLC_GH_TOKEN`; the
+  runner hands it only to `pr` (as `GH_TOKEN`, used by `gh` and by `git push` through a one-off credential helper) and
+  removes it from every other step, so agents never see it; Jira and gateway credentials (`JIRA_*`, `LITELLM_*`) likewise go in the agent's environment
   or Paperclip secrets, not a person's shell profile.
 
 ## review-agent
