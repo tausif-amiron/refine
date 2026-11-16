@@ -9,7 +9,7 @@ import { telemetryFile } from "./telemetry.ts";
 import { loadProfile, profilesFor, readScripts, scriptRuns, type Profile } from "../checks/hooks/profile.mjs";
 import { loadIr } from "./ir.ts";
 import { loadOwed, openFrom } from "./owed.ts";
-import { loadPlan } from "./run.ts";
+import { loadPlan, ticketChecks } from "./run.ts";
 import { scoreMarkdown, type ScoreResult } from "./score.ts";
 import type { IR, Plan } from "./types.ts";
 import { sh, writeFileEnsured } from "./util.ts";
@@ -176,13 +176,14 @@ export function attemptLines(state: TicketState, plan: Plan): string[] {
   const out: string[] = [];
   for (const u of plan.units) {
     const st = state.units[u.id];
-    for (const h of st?.history ?? []) {
+    // Numbered by position: a reset unit's later builds restart their own counter (RT-2 showed 1, 2, 3 four times).
+    for (const [i, h] of (st?.history ?? []).entries()) {
       const failed = [...h.report.matchAll(/^\[FAIL\] ([\w-]+)$/gm)].map((m) => m[1]);
       const lines = h.report.split("\n");
       const first = lines.find((l, i) => i > 0 && /^\[FAIL\]/.test(lines[i - 1]) && l.trim()) ?? lines[0];
       const sentence = clip(first.trim().split(/(?<=\.)\s/)[0], 160);
       const where = lines.find((l) => /^\s+\S+:\d+( \[[\w:-]+\])?$/.test(l))?.trim();
-      out.push(`\`${u.id}\` attempt ${h.attempt} failed ${failed.length ? failed.join(", ") : "QA"}: ${sentence}${where ? ` (${where})` : ""}`);
+      out.push(`\`${u.id}\` attempt ${i + 1} failed ${failed.length ? failed.join(", ") : "QA"}: ${sentence}${where ? ` (${where})` : ""}`);
     }
     if (st?.status === "passed" && st.finishedBy === "developer") out.push(`\`${u.id}\` finished by a developer after ${st.history.length} failed attempt(s); the same gates passed on their change.`);
     else if (st?.history.length && st.status === "passed") out.push(`\`${u.id}\` passed on attempt ${st.history.length + 1}.`);
@@ -194,9 +195,14 @@ export function attemptLines(state: TicketState, plan: Plan): string[] {
 export function ungatedScripts(cfg: Config, scripts: Record<string, string>, profiles: Profile[] = [loadProfile("node")]): { script: string; partial?: string }[] {
   const cmds = [...cfg.checks.fast, ...cfg.checks.full, ...cfg.checks.integration, ...cfg.checks.contract];
   const runs = (s: string) => cmds.some((c) => profiles.some((p) => scriptRuns(p, s, c)));
+  // A monorepo's root scripts cover every package; the workflow runs their per-package equivalents instead.
+  const perPackage = [...(cfg.monorepo?.checks?.fast ?? []), ...(cfg.monorepo?.checks?.full ?? [])];
+  const PER_PACKAGE: Record<string, RegExp> = { test: /\btest\b|vitest|jest/, build: /\bbuild\b|tsup/, lint: /biome|eslint|\blint\b/, typecheck: /\btsc\b|typecheck/ };
+  const coveredPerPackage = (s: string) => Boolean(PER_PACKAGE[s]) && perPackage.some((c) => PER_PACKAGE[s].test(c));
   const known = [...new Set(profiles.flatMap((p) => p.scripts?.known ?? []))];
   return known.filter((s) => s in scripts && !runs(s)).map((s) =>
-    s === "lint" && cfg.checks.lintChanged ? { script: s, partial: "only new errors in files a unit changed are checked, not the whole repo" } : { script: s });
+    coveredPerPackage(s) ? { script: s, partial: "run per package, for the packages this ticket touches, not across the whole repo" }
+    : s === "lint" && cfg.checks.lintChanged ? { script: s, partial: "only new errors in files a unit changed are checked, not the whole repo" } : { script: s });
 }
 
 function ticketCost(root: string, cfg: Config, ticket: string): number | undefined {
@@ -256,7 +262,7 @@ export function openPr(o: { root: string; ticket: string; cfg: Config; base?: st
   const workflowFiles = wf === "." ? 0 : changed.filter((f) => f.startsWith(`${wf}/`) || f.startsWith(".claude/") || f.startsWith(".github/workflows/")).length;
   const facts: PrFacts = {
     base,
-    gatesRun: ["SCOPE", "tests changed", ...cfg.checks.full.map((c) => `\`${c}\``), ...(cfg.checks.lintChanged ? ["no new lint errors"] : []), "every test seen red", `mutation (up to ${cfg.mutation.fastSubset} mutants per unit; results below)`],
+    gatesRun: ["SCOPE", "tests changed", ...ticketChecks(root, cfg, plan).map((c) => `\`${c}\``), ...(cfg.checks.lintChanged ? ["no new lint errors"] : []), "every test seen red", `mutation (up to ${cfg.mutation.fastSubset} mutants per unit; results below)`],
     mutation: mutationResults(state, plan),
     external: plan.units.flatMap((u) => {
       const g = state.units[u.id]?.gates?.find((x) => x.name === "mutation-external");

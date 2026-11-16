@@ -71,6 +71,9 @@ export async function runScoreProbe(o: { root: string; ir: IR; cfg: Config; runn
         "--agents", JSON.stringify({ score: { description: "blind score observer", prompt: def.body, tools: def.tools } }),
         "--strict-mcp-config", "--mcp-config", JSON.stringify({ mcpServers: { playwright: mcp.mcpServers.playwright } }),
         "--tools", "",
+        // The empty folder has no .claude/settings.json, so under dontAsk nothing is pre-approved: grant the
+        // observer's own tools (the browser) here, or every call is denied and every probe comes back unreached.
+        "--allowedTools", def.tools.join(","),
       ],
     });
     const parsed = extractJson<{ observations: Observation[] }>(res.text);

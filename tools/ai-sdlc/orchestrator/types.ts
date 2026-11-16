@@ -122,6 +122,9 @@ export interface Brief {
   scope: string[];
   tests: string[];         // test globs inside scope
   packages?: string[];     // foundation only: package names it may install
+  /** Monorepo: the workspace packages this unit touches, and the checks resolved for them (gates and hooks use these). */
+  workspaces?: { name: string; dir: string }[];
+  checks?: { fast: string[]; full: string[] };
   issued_at: string;
 }
 

@@ -52,10 +52,12 @@ export interface Config {
   escalationModel?: { model: string; attempts: number };
   /** LLM gateway (LiteLLM) in front of agent runs; see orchestrator/gateway.ts. Empty url = direct to the provider. */
   gateway?: { url: string; keys?: Record<string, string>; headers?: Record<string, string> };
+  /** Monorepo: checks and tests per workspace package, for the packages a unit touches (checks/hooks/monorepo.mjs). */
+  monorepo?: { packages: "auto" | { name: string; dir: string }[]; checks?: { fast?: string[]; full?: string[] }; tests?: { command: string } };
   /** Where `pr` pushes (git remote, default origin) and the GitHub repo (owner/name) its PRs open on (default: gh's). */
   pr?: { remote?: string; repo?: string };
   /** Paperclip control plane, for `paperclip-sync` (runs get their own settings from Paperclip); see orchestrator/paperclip.ts. */
-  paperclip?: { url: string; companyId: string; agentId: string; project?: string };
+  paperclip?: { url: string; companyId: string; agentId: string; project?: string; /** Paperclip project for this repo's issues. */ projectId?: string; /** Report stages as the live dashboard (default on). */ report?: boolean };
   release: { stages: number[]; healthUrl: string; deployCommand: string; rollbackCommand: string; watchMinutes: number; errorRateThreshold: number };
   ops: {
     preApprovedActions: string[];
@@ -101,7 +103,11 @@ export function cliHint(command: string, root = repoRoot()): string {
   if (wf === ".") return `npm run ${command.split(" ")[0]} -- ${command.split(" ").slice(1).join(" ")}`.trim();
   try {
     const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-    if (pkg.scripts?.["ai-sdlc"]) return `npm run ai-sdlc -- ${command}`;
+    if (pkg.scripts?.["ai-sdlc"]) {
+      const pm = /^pnpm@/.test(pkg.packageManager ?? "") || existsSync(join(root, "pnpm-lock.yaml")) || existsSync(join(root, "pnpm-workspace.yaml")) ? "pnpm"
+        : /^yarn@/.test(pkg.packageManager ?? "") || existsSync(join(root, "yarn.lock")) ? "yarn" : "npm";
+      return pm === "npm" ? `npm run ai-sdlc -- ${command}` : `${pm} ai-sdlc ${command}`;
+    }
   } catch { /* no package.json */ }
   return `node ${wf}/bin/ai-sdlc.mjs ${command}`;
 }

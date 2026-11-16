@@ -7,6 +7,7 @@ import { join } from "node:path";
 import type { Config } from "./config.ts";
 import { WORKFLOW_ROOT } from "./config.ts";
 import { reviewModel } from "./review.ts";
+import { packagesOf } from "../checks/hooks/monorepo.mjs";
 import { profilesFor } from "../checks/hooks/profile.mjs";
 
 export type Level = "pass" | "warn" | "fail";
@@ -48,6 +49,12 @@ export async function doctor(root: string, cfg: Config, deps: DoctorDeps, opts: 
 
   if (!cfg.checks.full.length) add("Checks", "fail", "checks.full is empty, so no unit is checked", "Add the repo's lint, type check and test commands to checks.full");
   else add("Checks", "pass", `${cfg.checks.full.length} full checks, ${cfg.checks.fast.length} fast`);
+  if (cfg.monorepo) {
+    const pkgs = packagesOf(root, cfg);
+    const per = cfg.monorepo.checks?.full?.length ?? 0;
+    if (pkgs.length) add("Monorepo", "pass", `${pkgs.length} package${pkgs.length === 1 ? "" : "s"}; ${per} check${per === 1 ? "" : "s"} per package run for the packages a unit touches`);
+    else add("Monorepo", "fail", "monorepo is configured, but no workspace packages were found, so units would run only the repo-wide checks", "Check pnpm-workspace.yaml / package.json workspaces / lerna.json, or list monorepo.packages in ai-sdlc.config.json");
+  }
   if (!cfg.checks.integration.length) add("Integration checks", "warn", "checks.integration is empty: QA runs only the contract check", "If the repo has slower or external tests, add the commands that run them to checks.integration");
   else add("Integration checks", "pass", `${cfg.checks.integration.length} configured`);
 

@@ -1,5 +1,6 @@
 // Unit gates. Each returns pass/fail from code, never from a model.
 // Order: scope → contracts untouched → produced change → tests changed → checks → red at base → mutation.
+import { packagesOf, testRuns } from "../checks/hooks/monorepo.mjs";
 import { existsSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { tmpdir } from "node:os";
@@ -77,7 +78,10 @@ export function checksGate(cwd: string, commands: string[], name = "checks", env
 export interface TestOutcome { file: string; name: string; status: "passed" | "failed" | "skipped" }
 
 /** Parse a test report: JUnit XML (pytest, Go, Java, .NET, ...) or jest/vitest JSON, detected from its content. */
-export function parseTestReport(report: string, cwd: string): { tests: TestOutcome[]; failedFiles: string[] } {
+/** A parsed test report. `loadErrors` holds, for each file that did not load, the runner's message (when it gave one). */
+export interface TestReport { tests: TestOutcome[]; failedFiles: string[]; loadErrors: Record<string, string> }
+
+export function parseTestReport(report: string, cwd: string): TestReport {
   return report.trimStart().startsWith("<") ? parseJunit(report, cwd) : parseJestJson(report, cwd);
 }
 
@@ -96,9 +100,10 @@ function xmlAttrs(tag: string): Record<string, string> {
  * else from a dotted classname ("tests.test_cli.TestX" → tests/test_cli.py when that file exists). A case that
  * errored with no test of its own (a collection or import error) marks its whole file as failed.
  */
-export function parseJunit(xml: string, cwd: string): { tests: TestOutcome[]; failedFiles: string[] } {
+export function parseJunit(xml: string, cwd: string): TestReport {
   const tests: TestOutcome[] = [];
   const failedFiles: string[] = [];
+  const loadErrors: Record<string, string> = {};
   const rel = (f: string) => f.replace(cwd.endsWith("/") ? cwd : cwd + "/", "");
   // "tests.test_cli.TestX" → the longest prefix that names an existing file (tests/test_cli.py); else as given.
   const fromDotted = (dotted: string) => {
@@ -115,41 +120,60 @@ export function parseJunit(xml: string, cwd: string): { tests: TestOutcome[]; fa
     const classname = a.classname ?? "";
     const file = a.file ? rel(a.file) : classname ? fromDotted(classname) : fromDotted(a.name ?? "");
     const errored = /<(failure|error)\b/.test(body);
-    if (!classname && errored) { failedFiles.push(file); continue; } // the file itself failed to load
+    if (!classname && errored) { // the file itself failed to load
+      failedFiles.push(file);
+      const msg = body.match(/<(?:failure|error)\b[^>]*?message\s*=\s*"([^"]*)"/)?.[1] ?? body.replace(/<[^>]+>/g, "").trim();
+      if (msg) loadErrors[file] = unescapeXml(msg);
+      continue;
+    }
     const status = errored ? "failed" : /<skipped\b/.test(body) ? "skipped" : "passed";
     tests.push({ file, name: classname ? `${classname}.${a.name}` : String(a.name), status });
   }
-  return { tests, failedFiles };
+  return { tests, failedFiles, loadErrors };
 }
 
-function parseJestJson(json: string, cwd: string): { tests: TestOutcome[]; failedFiles: string[] } {
+function parseJestJson(json: string, cwd: string): TestReport {
   const tests: TestOutcome[] = [];
   const failedFiles: string[] = [];
+  const loadErrors: Record<string, string> = {};
   let doc: any;
-  try { doc = JSON.parse(json); } catch { return { tests, failedFiles }; }
+  try { doc = JSON.parse(json); } catch { return { tests, failedFiles, loadErrors }; }
   for (const tr of doc.testResults ?? []) {
     const file = String(tr.name ?? tr.testFilePath ?? "").replace(cwd.endsWith("/") ? cwd : cwd + "/", "");
     const assertions = tr.assertionResults ?? tr.testResults ?? [];
-    if (!assertions.length && tr.status === "failed") failedFiles.push(file);
+    if (!assertions.length && tr.status === "failed") {
+      failedFiles.push(file);
+      const msg = String(tr.message ?? tr.failureMessage ?? "").trim();
+      if (msg) loadErrors[file] = msg;
+    }
     for (const a of assertions) {
       const status = a.status === "passed" ? "passed" : a.status === "failed" ? "failed" : "skipped";
       tests.push({ file, name: String(a.fullName ?? a.title), status });
     }
   }
-  return { tests, failedFiles };
+  return { tests, failedFiles, loadErrors };
 }
 
-export function runTests(cwd: string, cfg: Config, files: string[]): { code: number; tests: TestOutcome[]; failedFiles: string[]; output: string } {
-  const dir = mkdtempSync(join(tmpdir(), "ai-sdlc-tests-"));
-  const out = join(dir, "report");
-  try {
-    const cmd = cfg.tests.command.replace("{out}", out).replace("{files}", files.map((f) => `'${f}'`).join(" "));
-    const r = sh(cmd, { cwd, timeoutMs: 20 * 60_000 });
-    const report = existsSync(out) ? readFileSync(out, "utf8") : r.stdout;
-    return { code: r.code, ...parseTestReport(report, cwd), output: r.stdout + r.stderr };
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
+export function runTests(cwd: string, cfg: Config, files: string[]): TestReport & { code: number; output: string } {
+  // In a monorepo each package's tests run with that package's command; the reports are merged.
+  const merged: TestReport & { code: number; output: string } = { tests: [], failedFiles: [], loadErrors: {}, code: 0, output: "" };
+  for (const run of testRuns(cfg, packagesOf(cwd, cfg), files)) {
+    const dir = mkdtempSync(join(tmpdir(), "ai-sdlc-tests-"));
+    const out = join(dir, "report");
+    try {
+      const cmd = run.command.replace("{out}", out).replace("{files}", run.files.map((f) => `'${f}'`).join(" "));
+      const r = sh(cmd, { cwd, timeoutMs: 20 * 60_000 });
+      const report = parseTestReport(existsSync(out) ? readFileSync(out, "utf8") : r.stdout, cwd);
+      merged.tests.push(...report.tests);
+      merged.failedFiles.push(...report.failedFiles);
+      Object.assign(merged.loadErrors, report.loadErrors);
+      merged.code = merged.code || r.code;
+      merged.output += r.stdout + r.stderr;
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   }
+  return merged;
 }
 
 export const testKey = (t: { file: string; name: string }) => `${t.file}::${t.name}`;
@@ -172,11 +196,13 @@ export interface RedAtBase {
   preexisting: number;
   /** How each test ran without the implementation: passed, failed, or its file did not load. */
   atBase: Map<string, "passed" | "failed" | "skipped" | "not-loaded">;
+  /** For each test file that did not load without the implementation, the runner's error. */
+  loadErrors: Record<string, string>;
   implChanged: boolean;
 }
 
 export function redAtBase(ctx: GateContext, testFiles: string[], implFiles: string[]): RedAtBase {
-  if (!testFiles.length) return { added: [], preexisting: 0, atBase: new Map(), implChanged: implFiles.length > 0 };
+  if (!testFiles.length) return { added: [], preexisting: 0, atBase: new Map(), loadErrors: {}, implChanged: implFiles.length > 0 };
   const ledger = loadLedger(ctx.ledgerPath);
   // Tests that already existed at the base commit (in test files that existed then) were written, and seen red,
   // before this unit. Learn which by running the base versions of those files against the base implementation.
@@ -207,7 +233,7 @@ export function redAtBase(ctx: GateContext, testFiles: string[], implFiles: stri
   const atBase: RedAtBase["atBase"] = new Map();
   for (const t of base.tests) atBase.set(testKey(t), t.status);
   for (const t of green.tests) if (redFiles.has(t.file)) atBase.set(testKey(t), "not-loaded");
-  return { added: green.tests.filter((t) => t.status !== "skipped" && !preexisting.has(testKey(t))), preexisting: preexisting.size, atBase, implChanged: implFiles.length > 0 };
+  return { added: green.tests.filter((t) => t.status !== "skipped" && !preexisting.has(testKey(t))), preexisting: preexisting.size, atBase, loadErrors: base.loadErrors, implChanged: implFiles.length > 0 };
 }
 
 /**
@@ -215,6 +241,9 @@ export function redAtBase(ctx: GateContext, testFiles: string[], implFiles: stri
  * under a mutant. Tests that pin behaviour which must stay unchanged pass at base by design; a mutant is how they
  * get seen red. Read after the mutation gate has added its kills to the ledger.
  */
+const firstLines = (s: string, n: number) => s.split("\n").filter((l) => l.trim()).slice(0, n).join("\n");
+const indentLines = (s: string, pad: string) => s.split("\n").map((l) => pad + l).join("\n");
+
 /** Is this test a pin (guards behaviour that must stay unchanged)? By its profile's naming convention. */
 export function isPin(t: { file: string; name: string }, cfg: Config): boolean {
   const pattern = cfg.tests.pinPattern ?? profileForFile(t.file)?.tests.pinPattern;
@@ -227,7 +256,7 @@ export function isPin(t: { file: string; name: string }, cfg: Config): boolean {
  * without the implementation and with it. A pin that fails without the change is not guarding unchanged behaviour
  * (mislabelled), and a unit that changed its implementation still needs at least one non-pin test seen red.
  */
-export function seenRedVerdict(ctx: GateContext, added: TestOutcome[], preexisting: number, atBase?: RedAtBase["atBase"], implChanged = false): GateResult {
+export function seenRedVerdict(ctx: GateContext, added: TestOutcome[], preexisting: number, atBase?: RedAtBase["atBase"], implChanged = false, loadErrors: Record<string, string> = {}): GateResult {
   const ledger = loadLedger(ctx.ledgerPath);
   const pins = added.filter((t) => isPin(t, ctx.cfg));
   const regular = added.filter((t) => !isPin(t, ctx.cfg));
@@ -245,7 +274,15 @@ export function seenRedVerdict(ctx: GateContext, added: TestOutcome[], preexisti
       : "";
     problems.push(`These tests never failed, neither without the implementation nor under any mutant, so they prove nothing yet (docs/TESTING.md#seen-red)${note}:\n${neverRed.map((t) => `  ${t.file} › ${t.name}`).join("\n")}${hint}`);
   }
-  if (badPins.length) problems.push(`These are named as pins but do not pass without the change, so they are not guarding unchanged behaviour. Rename them as ordinary tests, or make them test only what must stay the same:\n${badPins.map((t) => `  ${t.file} › ${t.name} (without the change: ${atBase?.get(testKey(t)) ?? "not run"})`).join("\n")}`);
+  if (badPins.length) {
+    let msg = `These are named as pins but do not pass without the change, so they are not guarding unchanged behaviour. Rename them as ordinary tests, or make them test only what must stay the same:\n${badPins.map((t) => `  ${t.file} › ${t.name} (without the change: ${atBase?.get(testKey(t)) ?? "not run"})`).join("\n")}`;
+    const unloaded = [...new Set(badPins.filter((t) => atBase?.get(testKey(t)) === "not-loaded").map((t) => t.file))];
+    if (unloaded.length) {
+      msg += `\n\n${unloaded.map((f) => `${f} did not load without the change${loadErrors[f] ? `:\n${indentLines(firstLines(loadErrors[f], 6), "    ")}` : " (the test runner gave no error)."}`).join("\n")}`;
+      msg += "\nA pin runs without the change, so it cannot sit in a file that imports something the change creates (even a dynamic import inside a test is resolved when the file loads). Move the pins to a separate file that imports only code that already exists.";
+    }
+    problems.push(msg);
+  }
   if (onlyPins) problems.push("The implementation changed, but every new test is a pin. Add at least one test of the new behaviour that fails without the change.");
   const pinNote = pins.length ? `; ${pins.length} pins pass before and after the change` : "";
   return {
@@ -260,7 +297,7 @@ export function seenRedVerdict(ctx: GateContext, added: TestOutcome[], preexisti
 /** Red at base on its own (without mutation): the unit's new tests must all fail without the implementation. */
 export function redAtBaseGate(ctx: GateContext, testFiles: string[], implFiles: string[]): GateResult {
   const r = redAtBase(ctx, testFiles, implFiles);
-  return seenRedVerdict(ctx, r.added, r.preexisting, r.atBase, r.implChanged);
+  return seenRedVerdict(ctx, r.added, r.preexisting, r.atBase, r.implChanged, r.loadErrors);
 }
 
 /** Run mutants against the unit's tests. A survivor (all tests still green) fails the gate. */
@@ -407,7 +444,7 @@ export function runUnitGates(ctx: GateContext): GateResult[] {
   const files = changedFiles(ctx.cwd, ctx.brief.base_commit);
   const results: GateResult[] = [scopeGate(files, ctx.unit), contractsGate(files), ...changeGates(files, ctx.unit, ctx.cfg, ctx.brief.tests)];
   if (results.some((r) => !r.pass)) return results;
-  const checks = checksGate(ctx.cwd, ctx.cfg.checks.full);
+  const checks = checksGate(ctx.cwd, ctx.brief.checks?.full ?? ctx.cfg.checks.full);
   results.push(checks);
   if (!checks.pass) return results;
   if (ctx.cfg.checks.lintChanged) {
@@ -421,7 +458,7 @@ export function runUnitGates(ctx: GateContext): GateResult[] {
   // a mutant breaks that behaviour.
   const red = redAtBase(ctx, testFiles, implFiles);
   const mut = mutationGate(ctx, testFiles, implFiles, ctx.cfg.mutation.fastSubset);
-  results.push(seenRedVerdict(ctx, red.added, red.preexisting, red.atBase, red.implChanged));
+  results.push(seenRedVerdict(ctx, red.added, red.preexisting, red.atBase, red.implChanged, red.loadErrors));
   results.push({ name: mut.name, pass: mut.pass, output: mut.output });
   const ext = externalMutationGate(ctx);
   if (ext) results.push(ext);

@@ -97,6 +97,17 @@ ticket's workflow cannot reach from where it is, leaves the ticket where it is a
 fails the step. Like comments, only tickets read from Jira move, except `release done`, which runs in CI and
 moves the keys of this repo's project (`ticketPrefix`) named in the released commits.
 
+## monorepos
+
+In a JS workspace (pnpm-workspace.yaml, package.json `workspaces`, or lerna.json) the installer writes a `monorepo`
+section: per-package check templates (`{name}`, `{dir}`; lint, type check, the package's own test and build, picked
+from what the repo and most packages have), a per-package test command, and walk specs inside each package
+(`<workspace glob>/test/walk/**`). The root checks keep only the workflow's repo-wide guards. Each unit's brief lists
+the packages its scope reaches and the checks expanded for them; the gates, the agent's own check runs
+(`run-checks.mjs`, the stop hook), the preflight and QA use those, and test files run with their own package's
+command. On refine (37 packages) that is about 11 seconds per check run instead of the whole repo. `doctor` reports
+the packages found. Shared code: `checks/hooks/monorepo.mjs`.
+
 ## pull-requests-from-a-fork
 
 When you cannot push to `origin` (an open-source project), set `pr.remote` to your fork's git remote and `pr.repo` to

@@ -43,7 +43,7 @@ if (brief && !input.stop_hook_active && !telemetryOnly) {
   if (source.length && !tests.length) {
     blockReason = `Implementation changed but no test file changed since the brief was issued. Write tests from the contract first (docs/TESTING.md). Changed: ${source.join(", ")}`;
   } else {
-    for (const cmd of cfg.checks?.full ?? []) {
+    for (const cmd of brief.checks?.full ?? cfg.checks?.full ?? []) {
       const r = sh(cmd);
       if (r.code !== 0) { blockReason = `Full check failed: ${cmd} (exit ${r.code})\n${tail(r.out, 5000)}\nRun the full checks yourself to see all of it; they write .ai-sdlc/checks/full.log.`; break; }
     }

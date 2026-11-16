@@ -98,7 +98,7 @@ export async function qaTicket(o: QaOptions): Promise<{ status: "pass" | "escala
     ws.runs++;
     res = await runner.run({ agent: "qa", prompt, cwd: dir, model: walk.model, budgetUsd: cfg.budgetUsdPerRun, env: { ...services.env, AI_SDLC_RUN_ID: runId, AI_SDLC_TICKET: ticket, AI_SDLC_UNIT: walk.id, AI_SDLC_AGENT: "qa", AI_SDLC_ATTEMPT: String(round), AI_SDLC_BRIEF: join(dir, ".ai-sdlc", "brief.json"), AI_SDLC_TELEMETRY_FILE: join(root, cfg.telemetry.file) } });
     commitAll(dir, `test(${walk.id}): walk specs from ${runId}\n\nTicket: ${ticket}\nUnit: ${walk.id}\nRun: ${runId}`);
-    gates = walkGates(dir, base, walk, cfg, services.env);
+    gates = walkGates(dir, base, walk, cfg, services.env, json.checks?.full);
     } finally {
       await services.stop();
     }

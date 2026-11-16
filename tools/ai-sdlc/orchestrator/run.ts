@@ -1,5 +1,6 @@
 // The build loop: plan → brief → build → gates, unit by unit in dependency order, parallel within
 // a level, one worktree per unit, three failed attempts then escalation, owed.yaml hand-offs.
+import { effectiveChecks, packagesForScope, packagesOf } from "../checks/hooks/monorepo.mjs";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Config } from "./config.ts";
@@ -100,7 +101,8 @@ export async function buildTicket(o: BuildOptions): Promise<BuildResult> {
   const buildUnits = plan.units.filter((u) => u.kind !== "walk");
   const ledgerPath = join(root, ".ai-sdlc", "seen-red", `${ticket}.json`);
   if (cfg.preflight !== false && buildUnits.some((u) => state.units[u.id].status === "pending")) {
-    const pf = preflight(root, tBranch, cfg);
+    // Monorepo: the preflight checks every package the ticket touches.
+    const pf = preflight(root, tBranch, cfg, ticketChecks(root, cfg, plan));
     if (!pf.pass) throw new Error(`Preflight failed, so no agent was started: the full checks fail in a clean worktree at the base commit, before any change. This is the environment, not the ticket. Fix it, then run the build again.\n${pf.output}`);
     log(`✓ preflight: full checks pass in a clean worktree at ${headCommit(root).slice(0, 8)}`);
   }
@@ -253,7 +255,12 @@ export async function buildTicket(o: BuildOptions): Promise<BuildResult> {
 }
 
 /** Full checks in a fresh worktree at the ticket branch's HEAD, set up exactly like a unit's (links, overrides). */
-export function preflight(root: string, tBranch: string, cfg: Config): GateResult {
+/** The full checks for a ticket: in a monorepo, each package its units touch, then the repo-wide checks. */
+export function ticketChecks(root: string, cfg: Config, plan: Plan): string[] {
+  return effectiveChecks(cfg, packagesForScope(packagesOf(root, cfg), plan.units.flatMap((u) => u.scope))).full;
+}
+
+export function preflight(root: string, tBranch: string, cfg: Config, checks: string[] = cfg.checks.full): GateResult {
   const dir = worktreeDir(root, "preflight");
   const branch = `${tBranch}--preflight`;
   const base = headCommit(root);
@@ -261,7 +268,7 @@ export function preflight(root: string, tBranch: string, cfg: Config): GateResul
   try {
     // BASE_REF = this commit: the guards judge what a unit changes, and the preflight has changed nothing. Without it
     // they scan every tracked file and fail on what the repo already contains (refine's test mocks).
-    return checksGate(dir, cfg.checks.full, "preflight", { BASE_REF: base });
+    return checksGate(dir, checks, "preflight", { BASE_REF: base });
   } finally {
     removeWorktree(root, dir);
     git(root, `branch -D '${branch}'`);
@@ -269,7 +276,7 @@ export function preflight(root: string, tBranch: string, cfg: Config): GateResul
 }
 
 /** Walk-unit gates: scope and checks only (e2e specs are red at base by construction). */
-export function walkGates(dir: string, base: string, unit: Unit, cfg: Config, env?: Record<string, string>): GateResult[] {
+export function walkGates(dir: string, base: string, unit: Unit, cfg: Config, env?: Record<string, string>, checks: string[] = cfg.checks.full): GateResult[] {
   const files = changedFiles(dir, base);
-  return [scopeGate(files, unit), contractsGate(files), checksGate(dir, cfg.checks.full, "checks", env)];
+  return [scopeGate(files, unit), contractsGate(files), checksGate(dir, checks, "checks", env)];
 }

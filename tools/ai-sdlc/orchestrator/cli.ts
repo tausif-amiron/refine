@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { doctor, formatFindings } from "./doctor.ts";
 import { withGateway } from "./gateway.ts";
+import { dashboardFor, type Stage } from "./dashboard.ts";
 import { cliStepRunner, HttpPaperclip, paperclipRun, paperclipSync } from "./paperclip.ts";
 import { cliHint, loadConfig, repoRoot } from "./config.ts";
 import { extractTicket } from "./extract.ts";
@@ -47,10 +48,30 @@ async function main() {
   const { pos, flags } = args(rest);
   const root = repoRoot();
   const cfg = loadConfig(root);
+  // Paperclip as the live dashboard (when paperclip.url is set): each stage is reported on the ticket's issue.
+  const dash = dashboardFor(root, cfg);
+  const logTo = (t: string, stage: Stage) => (m: string) => { process.stderr.write(m + "\n"); dash.progress(t, stage, m); };
+  const failed = async (t: string | undefined, stage: Stage, e: unknown) => { if (t) await dash.stage(t, stage, "failed", (e instanceof Error ? e.message : String(e)).split("\n").slice(0, 6).join(" ")); throw e; };
   const runner = withGateway(defaultRunner(), cfg);
   const ticket = pos[0];
   const needTicket = () => { if (!ticket || !/^[A-Z][A-Z0-9]+-\d+$/.test(ticket)) throw new Error(`usage: ${cliHint(`${cmd} <TICKET>`, root)}`); return ticket; };
 
+  const reportBuild = async (t: string, status: string, summary: string) => {
+    const report = summary.match(/report=(\S+)/)?.[1];
+    const unit = summary.match(/escalated\s+(\S+)/)?.[1];
+    if (status === "escalated") await dash.stage(t, "build", "waiting", `A unit escalated${unit ? ` (${unit})` : ""}: a developer finishes it on its branch, then runs ${cliHint(`gates ${t} ${unit ?? "<unit>"}`, root)}.${report ? ` Report: ${report}` : ""}`);
+    else await dash.stage(t, "build", "failed", summary.split("\n")[0]);
+  };
+  const runQa = async (t: string) => {
+    await dash.stage(t, "qa", "started", "Integration and contract checks, then the QA walk.");
+    const q = await qaTicket({ root, ticket: t, cfg, runner, log: logTo(t, "qa") }).catch((e) => failed(t, "qa", e));
+    await dash.flush();
+    out(`${q.summary}\nQA report: ${q.reportPath}`);
+    if (q.status === "pass") await dash.stage(t, "qa", "passed", `QA passed. Next: ${cliHint(`pr ${t}`, root)} (opening the PR asks first).`);
+    else if (q.status === "blocked") await dash.stage(t, "qa", "waiting", `QA could not verify: ${q.summary.split("\n")[0]}`);
+    else await dash.stage(t, "qa", "failed", q.summary.split("\n")[0]);
+    if (q.status !== "pass") process.exitCode = q.status === "blocked" ? 6 : 5;
+  };
   switch (cmd) {
     case "paperclip-run": {
       // Inside a Paperclip "process" agent run: Paperclip supplies these.
@@ -82,10 +103,22 @@ async function main() {
       return;
     }
     case "extract": {
-      const r = await extractTicket({ root, ticket: needTicket(), cfg, runner, ticketFile: flags["ticket-file"] as string | undefined, force: Boolean(flags.force) });
-      if (r.issues.length) { out(`IR rejected:\n${r.issues.map((i) => `  ${i.path}: ${i.message}`).join("\n")}`); process.exitCode = 2; return; }
+      const t = needTicket();
+      await dash.stage(t, "extract", "started", `Reading ${t} and the codebase (extract agent, ${cfg.models.extract ?? "opus"}).`);
+      const r = await extractTicket({ root, ticket: t, cfg, runner, ticketFile: flags["ticket-file"] as string | undefined, force: Boolean(flags.force) }).catch((e) => failed(t, "extract", e));
+      if (r.issues.length) {
+        out(`IR rejected:\n${r.issues.map((i) => `  ${i.path}: ${i.message}`).join("\n")}`);
+        await dash.stage(t, "extract", "failed", `IR rejected: ${r.issues.map((i) => `${i.path}: ${i.message}`).join("; ")}`);
+        process.exitCode = 2; return;
+      }
       out(`IR written: ${r.path}`);
-      if (r.needsAnswers) { out(`Clarification needed: ${r.ir!.questions.filter((q) => !q.answer).length} question(s), ${r.ir!.unplaced.length} unplaced. Answer in the IR (questions[].answer), then run: ${cliHint(`plan ${ticket}`, root)}`); process.exitCode = 3; }
+      await dash.title(t, r.ir!.title);
+      const open = r.ir!.questions.filter((q) => !q.answer);
+      if (r.needsAnswers) {
+        out(`Clarification needed: ${open.length} question(s), ${r.ir!.unplaced.length} unplaced. Answer in the IR (questions[].answer), then run: ${cliHint(`plan ${ticket}`, root)}`);
+        await dash.stage(t, "extract", "waiting", `Answer ${open.length} question(s) in ir/${t}.ir.json, then plan.\n${open.map((q, i) => `${i + 1}. ${q.q}`).join("\n")}`);
+        process.exitCode = 3;
+      } else await dash.stage(t, "extract", "passed", `IR sealed with ${r.ir!.sealed_acceptance_criteria.length} acceptance criteria.`);
       return;
     }
     case "plan": {
@@ -96,11 +129,12 @@ async function main() {
       if (irIssues.length) throw new Error(`IR invalid:\n${irIssues.map((i) => `${i.path}: ${i.message}`).join("\n")}`);
       const plan = buildPlan(ir, cfg);
       const issues = verifyPlan(ir, plan);
-      if (issues.length) throw new Error(`Plan failed its checks:\n${issues.map((i) => i.message).join("\n")}`);
+      if (issues.length) await failed(t, "plan", new Error(`Plan failed its checks:\n${issues.map((i) => i.message).join("\n")}`));
       writeFileEnsured(planPath(root, t), stableStringify(plan));
       for (const c of plan.contracts) writeFileEnsured(join(root, c.path), c.content);
       commitAll(root, `docs(plan): units and contracts for ${t}\n\nTicket: ${t}`);
       out(`${plan.units.length} units, ${plan.contracts.length} contracts:\n${plan.units.map((u) => `  ${u.id}  ← ${u.dependsOn.join(", ") || "-"}`).join("\n")}`);
+      await dash.stage(t, "plan", "passed", `${plan.units.length} units, ${plan.contracts.length} contracts: ${plan.units.map((u) => `${u.id} (${u.agent})`).join(", ")}.`);
       const posted = await postOnce(root, t, "answers", answersComment(ir, plan), Jira.fromEnv()).catch((e) => `failed: ${String(e)}`);
       if (posted !== "skipped: ticket not from Jira") out(`Jira: answers and plan ${posted}`);
       const moved = await moveTicket(root, t, "answered", cfg, Jira.fromEnv()).catch((e) => `failed: ${String(e)}`);
@@ -110,13 +144,14 @@ async function main() {
     case "run": {
       const t = needTicket();
       ensureBranch(root, ticketBranch(cfg.branchPrefix, t));
-      const b = await buildTicket({ root, ticket: t, cfg, runner });
+      await dash.stage(t, "build", "started", "Preflight, then each unit: tests first, then the gates (scope, checks, seen red, mutation).");
+      const b = await buildTicket({ root, ticket: t, cfg, runner, log: logTo(t, "build") }).catch((e) => failed(t, "build", e));
+      await dash.flush();
       out(b.summary);
-      if (b.status !== "pass") { process.exitCode = 4; return; }
+      if (b.status !== "pass") { await reportBuild(t, b.status, b.summary); process.exitCode = 4; return; }
+      await dash.stage(t, "build", "passed", b.summary.split("\n")[0]);
       if (flags["no-qa"]) return;
-      const q = await qaTicket({ root, ticket: t, cfg, runner });
-      out(`${q.summary}\nQA report: ${q.reportPath}`);
-      if (q.status !== "pass") process.exitCode = 5;
+      await runQa(t);
       return;
     }
     case "gates": {
@@ -124,16 +159,17 @@ async function main() {
       const t = needTicket();
       const unit = pos[1];
       if (!unit) throw new Error(`usage: ${cliHint("gates <TICKET> <unit id>", root)}`);
-      const b = await buildTicket({ root, ticket: t, cfg, runner, takeOver: unit });
+      await dash.stage(t, "gates", "started", `A developer finished ${unit}; running the same gates on their change (no agent).`);
+      const b = await buildTicket({ root, ticket: t, cfg, runner, takeOver: unit, log: logTo(t, "gates") }).catch((e) => failed(t, "gates", e));
+      await dash.flush();
       out(b.summary);
-      if (b.status !== "pass") { process.exitCode = 4; return; }
+      if (b.status !== "pass") { await reportBuild(t, b.status, b.summary); process.exitCode = 4; return; }
+      await dash.stage(t, "gates", "passed", `The developer's change on ${unit} passed every gate and is merged.`);
       out(`Next: ${cliHint(`qa ${t}`, root)}`);
       return;
     }
     case "qa": {
-      const q = await qaTicket({ root, ticket: needTicket(), cfg, runner });
-      out(`${q.summary}\nQA report: ${q.reportPath}`);
-      if (q.status !== "pass") process.exitCode = q.status === "blocked" ? 6 : 5;
+      await runQa(needTicket());
       return;
     }
     case "score-probe": {
@@ -159,6 +195,7 @@ async function main() {
     }
     case "pr": {
       const r = openPr({ root, ticket: needTicket(), cfg, base: flags.base as string | undefined, dryRun: Boolean(flags["dry-run"]) });
+      if (r.url) await dash.stage(needTicket(), "pr", "passed", `${r.url} into \`${r.base}\`. A person reviews and approves it.`);
       if (r.stack) process.stderr.write(`⚠ ${stackMessage(r.stack, "text")}\n\n`);
       out(r.url ? `${r.url} (base: ${r.base})` : `Base branch: ${r.base}\n\n${r.body}`);
       if (r.url) {

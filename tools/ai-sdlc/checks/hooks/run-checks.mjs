@@ -12,6 +12,7 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSyn
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { loadBrief, loadConfig, matcher, projectDir, sh, tail } from "./lib.mjs";
+import { packagesOf, testRuns } from "./monorepo.mjs";
 
 /** Pass/fail counts from a test report (JUnit XML or jest/vitest JSON), for the summary line. */
 export function reportCounts(text) {
@@ -38,13 +39,20 @@ export function changedTestFiles(root, brief, cfg) {
 
 export function runChecks(level, root = projectDir()) {
   const cfg = loadConfig(root);
+  const brief = loadBrief(root);
+  // In a monorepo the brief carries the checks for the unit's packages; outside a unit, the config's.
+  const checks = { ...cfg.checks, ...(brief?.checks ?? {}) };
   const steps = [];
   if (level === "changed") {
-    for (const c of cfg.checks?.fast ?? []) steps.push({ label: c, cmd: c });
-    const files = changedTestFiles(root, loadBrief(root), cfg);
-    if (files.length && cfg.tests?.command) steps.push({ label: `tests changed since the brief (${files.length} file${files.length === 1 ? "" : "s"})`, cmd: cfg.tests.command, files, report: true });
+    for (const c of checks.fast ?? []) steps.push({ label: c, cmd: c });
+    const files = changedTestFiles(root, brief, cfg);
+    if (files.length && cfg.tests?.command) {
+      for (const run of testRuns(cfg, packagesOf(root, cfg), files)) {
+        steps.push({ label: `tests changed since the brief (${run.files.length} file${run.files.length === 1 ? "" : "s"})`, cmd: run.command, files: run.files, report: true });
+      }
+    }
   } else {
-    const cmds = cfg.checks?.[level];
+    const cmds = checks[level];
     if (!Array.isArray(cmds)) return { code: 1, summary: `unknown check level "${level}" (fast, full, changed)` };
     for (const c of cmds) steps.push({ label: c, cmd: c });
   }

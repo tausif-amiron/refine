@@ -89,7 +89,11 @@ export function addWorktree(root: string, dir: string, branch: string, base: str
   writeFileSync(join(dir, ".ai-sdlc", "linked.json"), JSON.stringify(linked));
   carryLocalOverrides(root, dir);
   excludeFromGit(root, seedCaches(root, dir));
+  excludeFromGit(root, TOOL_OUTPUT_DIRS);
 }
+
+/** Folders agents' tools write into the working directory (not the unit's work): the Playwright MCP's logs and snapshots. */
+const TOOL_OUTPUT_DIRS = [".playwright-mcp"];
 
 /**
  * Copy the tool caches the profiles name (.mypy_cache, .ruff_cache, .pytest_cache, .eslintcache) from the main

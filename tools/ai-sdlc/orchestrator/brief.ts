@@ -1,5 +1,6 @@
 // Assemble a unit brief: the agent sees only its IR slice, its contracts, doc pointers, its
 // SCOPE, what it owes and is owed, and (on retries) the failure report. Never the whole IR.
+import { effectiveChecks, packagesForScope, packagesOf, type WorkspacePackage } from "../checks/hooks/monorepo.mjs";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { workflowRel, type Config } from "./config.ts";
@@ -76,6 +77,17 @@ export function irSlice(ir: IR, unit: Unit) {
   };
 }
 
+/**
+ * Monorepo: the workspace packages a unit touches, from its scope (a module's scope lists its files). The walk unit
+ * checks every package the ticket touches.
+ */
+export function unitWorkspaces(root: string, cfg: Config, plan: Plan, unit: Unit): WorkspacePackage[] {
+  const pkgs = packagesOf(root, cfg);
+  if (!pkgs.length) return [];
+  const units = unit.kind === "walk" ? plan.units : [unit];
+  return packagesForScope(pkgs, units.flatMap((u) => u.scope));
+}
+
 export function assembleBrief(input: BriefInput): { markdown: string; json: Brief } {
   const { ir, plan, unit, cfg, root, runId, attempt, baseCommit, owed, fixReport } = input;
   const tests = testGlobs(unit, cfg, ir);
@@ -87,6 +99,8 @@ export function assembleBrief(input: BriefInput): { markdown: string; json: Brie
     ...(unit.packages?.length ? { packages: unit.packages.map((p) => p.name) } : {}),
     issued_at: (input.now ?? new Date()).toISOString(),
   };
+  const workspaces = unitWorkspaces(root, cfg, plan, unit);
+  if (workspaces.length) { json.workspaces = workspaces; json.checks = effectiveChecks(cfg, workspaces); }
   const readContract = (p: string) => {
     const full = join(root, p);
     return existsSync(full) ? readFileSync(full, "utf8") : plan.contracts.find((c) => c.path === p)?.content ?? "(missing)";

@@ -57,6 +57,14 @@ export function parseCliOutput(stdout: string): AgentRunResult {
   };
 }
 
+export class UntrustedWorkspaceError extends Error {
+  constructor(cwd: string, stderr: string) {
+    const line = stderr.split("\n").find((l) => /has not been trusted/i.test(l))?.trim() ?? "";
+    super(`Claude Code has not trusted this repository, so it ignored the permissions in .claude/settings.json and the agent could not edit anything. No attempt was counted.\n${line}\nOpen the repository once in interactive Claude Code (run \`claude\` in its root), accept the trust dialog, then run the build again. (Agent ran in ${cwd}.)`);
+    this.name = "UntrustedWorkspaceError";
+  }
+}
+
 export class CliRunner implements AgentRunner {
   constructor(private bin = process.env.CLAUDE_BIN ?? "claude") {}
   async run(req: AgentRunRequest): Promise<AgentRunResult> {
@@ -66,6 +74,9 @@ export class CliRunner implements AgentRunner {
       input: req.prompt,
       timeoutMs: req.timeoutMs ?? 60 * 60_000,
     });
+    // An untrusted workspace makes Claude Code ignore .claude/settings.json's allow list, so dontAsk denies every
+    // edit and the attempt looks like "no change". That is the machine, not the unit: stop the build and say why.
+    if (/has not been trusted/i.test(r.stderr)) throw new UntrustedWorkspaceError(req.cwd, r.stderr);
     const out = parseCliOutput(r.stdout);
     if (r.code !== 0 && out.ok) out.ok = false;
     if (!out.ok && r.stderr) out.text = `${out.text}\n${r.stderr.slice(-2000)}`.trim();
