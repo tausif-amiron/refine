@@ -137,9 +137,21 @@ export interface AgentRunResult {
   tokens_in: number;
   tokens_out: number;
   cost_source: "cli" | "sdk" | "unknown" | "fake";
+  /** Of tokens_in: read from / written to the prompt cache (they weigh differently on cost and plan limits). */
+  tokens_cache_read?: number;
+  tokens_cache_write?: number;
+  /** Per model: tokens and cost (an agent may call more than one model). */
+  models?: Record<string, ModelUsage>;
+  /** The Claude plan's usage windows at the start and end of the run (subscriptions only; absent with an API key). */
+  plan_window?: PlanWindow;
   session_id?: string;
   raw?: unknown;
 }
 
 /** setup: the gate's own tool could not run (a configuration problem a person fixes, not the agent's work). */
 export interface GateResult { name: string; pass: boolean; output: string; setup?: boolean }
+
+export interface ModelUsage { in: number; out: number; cache_read: number; cache_write: number; cost_usd: number }
+/** Percent (0-100) of a plan window used at the start and end of a run, and when that window resets (ISO). */
+export interface WindowSample { start: number; end: number; resets_at?: string }
+export interface PlanWindow { five_hour?: WindowSample; seven_day?: WindowSample }

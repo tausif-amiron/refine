@@ -7,7 +7,7 @@ import type { Config } from "./config.ts";
 import { modelFor } from "./config.ts";
 import { Jira } from "./jira.ts";
 import type { AgentRunner } from "./runner.ts";
-import { emit } from "./telemetry.ts";
+import { emit, usageFields } from "./telemetry.ts";
 import { extractJson, newRunId, sh, sha256, writeFileEnsured } from "./util.ts";
 
 export interface Alert { service: string; signature: string; severity: string; time: string; detail?: string; source?: string }
@@ -202,7 +202,7 @@ export async function handleAlert(o: {
     `## Fingerprint`, `fp-${fp} (service + normalised signature). Repeat alerts are added here as comments.`,
   ].filter(Boolean).join("\n\n");
   const key = await store.create({ fingerprint: fp, service: alert.service, summary: `[ops] ${alert.service}: ${alert.signature}`.slice(0, 250), description, labels });
-  await emit(o.root, { event: "incident", run_id: runId, agent: "ops", started_at: started, ended_at: new Date().toISOString(), status: "info", tokens_in: res.tokens_in, tokens_out: res.tokens_out, cost_usd: res.cost_usd, cost_source: res.cost_source, output_ref: `jira:${key}`, detail: { fingerprint: fp, action: "created", executed, suspected_pr: triage.suspected_pr } }, cfg.telemetry.file);
+  await emit(o.root, { event: "incident", run_id: runId, agent: "ops", started_at: started, ended_at: new Date().toISOString(), status: "info", ...usageFields(res), output_ref: `jira:${key}`, detail: { fingerprint: fp, action: "created", executed, suspected_pr: triage.suspected_pr } }, cfg.telemetry.file);
   return { fingerprint: fp, action: "created", ticket: key, executed };
 }
 

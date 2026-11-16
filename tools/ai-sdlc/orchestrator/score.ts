@@ -8,7 +8,7 @@ import type { Config } from "./config.ts";
 import { cliHint, modelFor, WORKFLOW_ROOT } from "./config.ts";
 import { sealHash } from "./ir.ts";
 import { readAgentDefinition, type AgentRunner } from "./runner.ts";
-import { emit } from "./telemetry.ts";
+import { emit, usageFields } from "./telemetry.ts";
 import type { IR } from "./types.ts";
 import { extractJson, newRunId, stableStringify, writeFileEnsured } from "./util.ts";
 
@@ -78,7 +78,7 @@ export async function runScoreProbe(o: { root: string; ir: IR; cfg: Config; runn
     });
     const parsed = extractJson<{ observations: Observation[] }>(res.text);
     const observations = normaliseObservations(sheet, parsed.observations ?? []);
-    await emit(o.root, { event: "run", run_id: runId, ticket: o.ir.ticket, agent: "score", started_at: started, ended_at: new Date().toISOString(), status: "info", tokens_in: res.tokens_in, tokens_out: res.tokens_out, cost_usd: res.cost_usd, cost_source: res.cost_source }, o.cfg.telemetry.file);
+    await emit(o.root, { event: "run", run_id: runId, ticket: o.ir.ticket, agent: "score", started_at: started, ended_at: new Date().toISOString(), status: "info", ...usageFields(res) }, o.cfg.telemetry.file);
     const dir = reportDir(o.root, o.ir.ticket);
     writeFileEnsured(join(dir, "score-observed.json"), stableStringify({ build: o.buildRef, observations }));
     const judgingPath = join(dir, "score-judging.md");

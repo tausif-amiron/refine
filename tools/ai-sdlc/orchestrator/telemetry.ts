@@ -2,6 +2,7 @@
 // File sink always; OTLP/HTTP logs when OTEL_EXPORTER_OTLP_ENDPOINT is set. Never throws.
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
+import type { AgentRunResult, ModelUsage, PlanWindow } from "./types.ts";
 
 export interface TelemetryEvent {
   schema?: "ai-sdlc.event.v1";
@@ -19,8 +20,22 @@ export interface TelemetryEvent {
   tokens_out?: number;
   cost_usd?: number;
   cost_source?: "cli" | "sdk" | "unknown" | "fake";
+  tokens_cache_read?: number;
+  tokens_cache_write?: number;
+  models?: Record<string, ModelUsage>;
+  plan_window?: PlanWindow;
   output_ref?: string;
   detail?: Record<string, unknown>;
+}
+
+/** The usage fields of a run event, from an agent's result (tokens, cost, cache split, models, plan window). */
+export function usageFields(res: AgentRunResult): Pick<TelemetryEvent, "tokens_in" | "tokens_out" | "cost_usd" | "cost_source" | "tokens_cache_read" | "tokens_cache_write" | "models" | "plan_window"> {
+  return {
+    tokens_in: res.tokens_in, tokens_out: res.tokens_out, cost_usd: res.cost_usd, cost_source: res.cost_source,
+    ...(res.tokens_cache_read !== undefined ? { tokens_cache_read: res.tokens_cache_read, tokens_cache_write: res.tokens_cache_write } : {}),
+    ...(res.models ? { models: res.models } : {}),
+    ...(res.plan_window ? { plan_window: res.plan_window } : {}),
+  };
 }
 
 export function telemetryFile(root: string, configured = ".ai-sdlc/telemetry/events.jsonl"): string {

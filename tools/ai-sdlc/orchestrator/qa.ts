@@ -14,7 +14,7 @@ import type { AgentRunner } from "./runner.ts";
 import { loadState, recordFailure, saveState } from "./attempts.ts";
 import { startServices, type RunningServices } from "./services.ts";
 import type { AgentRunResult, GateResult } from "./types.ts";
-import { emit } from "./telemetry.ts";
+import { emit, usageFields } from "./telemetry.ts";
 import { extractJson, newRunId, writeFileEnsured } from "./util.ts";
 
 export interface QaVerdict {
@@ -104,7 +104,7 @@ export async function qaTicket(o: QaOptions): Promise<{ status: "pass" | "escala
     }
     const parsed = parseVerdict(res.text, known);
     sections.push(`### Walk gates`, "```", gateReport(gates), "```", `### QA agent report (verdict parsed by code)`, res.text.slice(0, 20000));
-    await emit(root, { event: "run", run_id: runId, ticket, unit: walk.id, agent: "qa", model: walk.model, attempt: round, started_at: started, ended_at: new Date().toISOString(), status: parsed.verdict?.status === "pass" && gates.every((g) => g.pass) && integration.pass ? "pass" : "fail", tokens_in: res.tokens_in, tokens_out: res.tokens_out, cost_usd: res.cost_usd, cost_source: res.cost_source }, cfg.telemetry.file);
+    await emit(root, { event: "run", run_id: runId, ticket, unit: walk.id, agent: "qa", model: walk.model, attempt: round, started_at: started, ended_at: new Date().toISOString(), status: parsed.verdict?.status === "pass" && gates.every((g) => g.pass) && integration.pass ? "pass" : "fail", ...usageFields(res) }, cfg.telemetry.file);
 
     const walkOk = gates.every((g) => g.pass);
     if (walkOk && integration.pass && parsed.verdict?.status === "pass") {

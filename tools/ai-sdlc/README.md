@@ -44,7 +44,7 @@ Per ticket (in the client repository; `npm run ai-sdlc -- <command>` there, `npm
 | Release | CI (`release.yml`) | staged rollout, health checks, auto rollback, watch window |
 | Incidents | CI (`ops.yml`) on alert | fingerprint dedup, rate limit, pre-approved actions only, verify window |
 | Learning loop | `npm run learn` | repeated human corrections the agent missed → convention proposals |
-| Dashboard | `npm run report`, `npm run dashboard` | cost and cycle time per ticket |
+| Dashboard | `npm run report`, `npm run dashboard` | cost and cycle time per ticket; plan usage (5-hour window, week) per story point |
 
 Offline extraction (no Jira): `npm run extract -- JIRA-123 --ticket-file path/to/ticket.md`.
 

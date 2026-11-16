@@ -11,7 +11,7 @@ import { Jira } from "./jira.ts";
 import { moveTicket, postOnce, recordTicketSource } from "./jira-sync.ts";
 import type { AgentRunner } from "./runner.ts";
 import { generateProbes, probesPath } from "./score.ts";
-import { emit } from "./telemetry.ts";
+import { emit, usageFields } from "./telemetry.ts";
 import type { IR } from "./types.ts";
 import { extractJson, newRunId, stableStringify, writeFileEnsured } from "./util.ts";
 
@@ -29,7 +29,7 @@ export interface ExtractOptions {
 
 export interface ExtractResult { ir?: IR; issues: IrIssue[]; needsAnswers: boolean; path?: string }
 
-export async function fetchTicketText(o: ExtractOptions): Promise<{ text: string; title: string }> {
+export async function fetchTicketText(o: ExtractOptions): Promise<{ text: string; title: string; storyPoints?: number; estimateHours?: number }> {
   if (o.ticketFile) {
     const text = readFileSync(o.ticketFile, "utf8");
     const title = text.split("\n").find((l) => l.trim())?.replace(/^#+\s*/, "").trim() ?? o.ticket;
@@ -41,7 +41,7 @@ export async function fetchTicketText(o: ExtractOptions): Promise<{ text: string
   if (!o.force && issue.status.toLowerCase() !== o.cfg.jira.readyStatus.toLowerCase()) {
     throw new Error(`${o.ticket} is in "${issue.status}", not "${o.cfg.jira.readyStatus}". Move it when it is ready, or pass --force.`);
   }
-  return { text: `# ${issue.summary}\n\n${issue.text}`, title: issue.summary };
+  return { text: `# ${issue.summary}\n\n${issue.text}`, title: issue.summary, ...(issue.storyPoints !== undefined ? { storyPoints: issue.storyPoints } : {}), ...(issue.estimateHours !== undefined ? { estimateHours: issue.estimateHours } : {}) };
 }
 
 export function extractPrompt(ticket: string, ticketText: string, feedback?: string): string {
@@ -61,7 +61,7 @@ const PLACEHOLDER_HASH = "sha256:" + "0".repeat(64);
 
 export async function extractTicket(o: ExtractOptions): Promise<ExtractResult> {
   const runId = newRunId();
-  const { text, title } = await fetchTicketText(o);
+  const { text, title, storyPoints, estimateHours } = await fetchTicketText(o);
   const criteria = parseAcceptanceCriteria(text, o.cfg.jira.acceptanceCriteriaHeading);
   if (!criteria.length) {
     return { issues: [{ path: "/sealed_acceptance_criteria", message: `ticket has no numbered items under "${o.cfg.jira.acceptanceCriteriaHeading}"; write the ticket with the /ticket skill` }], needsAnswers: true };
@@ -87,7 +87,7 @@ export async function extractTicket(o: ExtractOptions): Promise<ExtractResult> {
     } catch (e) {
       issues = [{ path: "/", message: `agent output was not an IR JSON object: ${String(e)}` }];
     }
-    await emit(o.root, { event: "run", run_id: runId, ticket: o.ticket, agent: "extract", model: modelFor(o.cfg, "extract"), attempt, started_at: started, ended_at: new Date().toISOString(), status: issues.length ? "fail" : "pass", tokens_in: res.tokens_in, tokens_out: res.tokens_out, cost_usd: res.cost_usd, cost_source: res.cost_source, detail: { issues: issues.length, messages: issues.slice(0, 20).map((i) => `${i.path}: ${i.message}`) } }, o.cfg.telemetry.file);
+    await emit(o.root, { event: "run", run_id: runId, ticket: o.ticket, agent: "extract", model: modelFor(o.cfg, "extract"), attempt, started_at: started, ended_at: new Date().toISOString(), status: issues.length ? "fail" : "pass", ...usageFields(res), detail: { issues: issues.length, messages: issues.slice(0, 20).map((i) => `${i.path}: ${i.message}`), ...(storyPoints !== undefined ? { story_points: storyPoints } : {}), ...(estimateHours !== undefined ? { estimate_hours: estimateHours } : {}) } }, o.cfg.telemetry.file);
     if (!issues.length) { ir = candidate; break; }
     feedback = issues.map((i) => `${i.path}: ${i.message}`).join("\n");
   }
