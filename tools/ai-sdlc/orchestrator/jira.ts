@@ -82,6 +82,11 @@ export function adfToText(adf: unknown): string {
       case "paragraph": lines.push(prefix + inline(n)); break;
       case "orderedList": (n.content ?? []).forEach((li, i) => listItem(li, `${Number(n.attrs?.order ?? 1) + i}. `)); break;
       case "bulletList": (n.content ?? []).forEach((li) => listItem(li, "- ")); break;
+      // A Jira checklist: its items hold their text directly (RT-3's acceptance criteria were lost without this).
+      case "taskList": (n.content ?? []).forEach((it) => {
+        if (it.type === "taskList") block(it, prefix);
+        else lines.push(`${prefix}- [${it.attrs?.state === "DONE" ? "x" : " "}] ${inline(it)}`);
+      }); break;
       case "codeBlock": lines.push("```", inline(n), "```"); break;
       case "blockquote": (n.content ?? []).forEach((c) => block(c, "> ")); break;
       case "rule": lines.push("---"); break;
