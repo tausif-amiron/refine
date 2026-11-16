@@ -1,0 +1,27 @@
+{
+  "probes": [
+    {
+      "ask": "As a new user, check: No behaviour change. Record exactly what the product shows.",
+      "criterion": "AC-1",
+      "id": "P-1"
+    },
+    {
+      "ask": "As a new user, check: Existing simple-rest tests pass. Record exactly what the product shows.",
+      "criterion": "AC-2",
+      "id": "P-2"
+    },
+    {
+      "ask": "As a new user, check: Biome lint clean. Record exactly what the product shows.",
+      "criterion": "AC-3",
+      "id": "P-3"
+    },
+    {
+      "ask": "As a new user, check: No changeset needed (internal refactor). Record exactly what the product shows.",
+      "criterion": "AC-4",
+      "id": "P-4"
+    }
+  ],
+  "schema": "ai-sdlc.probes.v1",
+  "sealed_hash": "sha256:bd03569aab9bf6ac7b63c7220904de0bbde621f21d0fc3313028aa60c8f8ded4",
+  "ticket": "RT-3"
+}
