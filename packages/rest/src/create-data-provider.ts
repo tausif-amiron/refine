@@ -55,6 +55,7 @@ export const createDataProvider = (
         const response = await ky(endpoint, {
           headers,
           searchParams: qs.stringify(query, stringifyOptions),
+          signal: params.meta?.signal,
         });
 
         const data = await options.getList.mapResponse(
@@ -79,6 +80,7 @@ export const createDataProvider = (
         const response = await ky(endpoint, {
           headers,
           searchParams: qs.stringify(query, stringifyOptions),
+          signal: params.meta?.signal,
         });
 
         const data = await options.getOne.mapResponse(response, params);
@@ -99,6 +101,7 @@ export const createDataProvider = (
             const response = await ky(endpoint, {
               headers,
               searchParams: qs.stringify(query, stringifyOptions),
+              signal: params.meta?.signal,
             });
 
             if (response.ok) {
@@ -338,7 +341,11 @@ export const createDataProvider = (
           }
         }
 
-        const response = await client<AnyObject>(url);
+        const signal = params.meta?.signal;
+        const response = await client<AnyObject>(
+          url,
+          method === "get" && signal ? { signal } : undefined,
+        );
 
         if (response.ok) {
           const data = await options.custom.mapResponse(response, params);
