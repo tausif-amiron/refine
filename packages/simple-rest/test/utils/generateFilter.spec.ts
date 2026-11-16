@@ -72,6 +72,76 @@ describe("generateFilter", () => {
     expect(generateFilter(filters)).toEqual({ name: "John" });
   });
 
+  it("throws for gt instead of returning an equality filter", () => {
+    const filters: CrudFilters = [
+      { field: "price", operator: "gt", value: 10 },
+    ];
+    expect(() => generateFilter(filters)).toThrow(
+      "[@refinedev/simple-rest]: `operator: gt` is not supported. You can create custom data provider. https://refine.dev/docs/api-reference/core/providers/data-provider/#creating-a-data-provider",
+    );
+  });
+
+  it.each([
+    "eqs",
+    "nes",
+    "lt",
+    "gt",
+    "nin",
+    "ina",
+    "nina",
+    "ncontains",
+    "containss",
+    "ncontainss",
+    "between",
+    "nbetween",
+    "null",
+    "nnull",
+    "startswith",
+    "nstartswith",
+    "startswiths",
+    "nstartswiths",
+    "endswith",
+    "nendswith",
+    "endswiths",
+    "nendswiths",
+    "unsupported",
+    "",
+  ])("throws a descriptive error for '%s' operator", (operator) => {
+    const filters = [
+      { field: "price", operator, value: 10 },
+    ] as unknown as CrudFilters;
+    expect(() => generateFilter(filters)).toThrow(
+      `[@refinedev/simple-rest]: \`operator: ${operator}\` is not supported.`,
+    );
+  });
+
+  it.each([
+    ["eq", "price"],
+    ["in", "price"],
+    ["ne", "price_ne"],
+    ["gte", "price_gte"],
+    ["lte", "price_lte"],
+    ["contains", "price_like"],
+  ])("maps '%s' operator to key '%s'", (operator, key) => {
+    const filters = [
+      { field: "price", operator, value: 10 },
+    ] as unknown as CrudFilters;
+    expect(generateFilter(filters)).toEqual({ [key]: 10 });
+  });
+
+  it("pin: treats a missing operator as eq", () => {
+    const filters = [
+      { field: "name", value: "John" },
+      { field: "age", operator: null, value: 3 },
+    ] as unknown as CrudFilters;
+    expect(generateFilter(filters)).toEqual({ name: "John", age: 3 });
+  });
+
+  it("pin: keeps 'q' exempt from the operator check", () => {
+    const filters: CrudFilters = [{ field: "q", operator: "gt", value: "x" }];
+    expect(generateFilter(filters)).toEqual({ q: "x" });
+  });
+
   it("creates a filter object with the 'q' field", () => {
     const filters: CrudFilters = [
       { field: "q", operator: "eq", value: "searchValue" },

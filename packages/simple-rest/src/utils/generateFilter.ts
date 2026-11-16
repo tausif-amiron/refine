@@ -1,15 +1,25 @@
 import type { CrudFilters } from "@refinedev/core";
 import { mapOperator } from "./mapOperator";
 
+const supportedOperators: string[] = [
+  "eq",
+  "in",
+  "ne",
+  "gte",
+  "lte",
+  "contains",
+];
+
+const unsupportedMessage = (operator: string) =>
+  `[@refinedev/simple-rest]: \`operator: ${operator}\` is not supported. You can create custom data provider. https://refine.dev/docs/api-reference/core/providers/data-provider/#creating-a-data-provider`;
+
 export const generateFilter = (filters?: CrudFilters) => {
   const queryFilters: { [key: string]: string } = {};
 
   if (filters) {
     filters.forEach((filter) => {
       if (filter.operator === "or" || filter.operator === "and") {
-        throw new Error(
-          `[@refinedev/simple-rest]: \`operator: ${filter.operator}\` is not supported. You can create custom data provider. https://refine.dev/docs/api-reference/core/providers/data-provider/#creating-a-data-provider`,
-        );
+        throw new Error(unsupportedMessage(filter.operator));
       }
 
       if ("field" in filter) {
@@ -18,6 +28,14 @@ export const generateFilter = (filters?: CrudFilters) => {
         if (field === "q") {
           queryFilters[field] = value;
           return;
+        }
+
+        if (
+          operator !== undefined &&
+          operator !== null &&
+          !supportedOperators.includes(operator)
+        ) {
+          throw new Error(unsupportedMessage(operator));
         }
 
         const mappedOperator = mapOperator(operator);
