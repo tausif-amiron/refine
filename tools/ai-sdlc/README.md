@@ -97,16 +97,50 @@ shows each of these on a small ticket, including a deliberately failing unit tha
 1. **Claude Code**: install the pinned version (`.claude-code-version`). Agents run headless as
    `claude -p --agent <name> --permission-mode dontAsk --output-format json --max-budget-usd <n>`
    (`orchestrator/runner.ts`); set `AI_SDLC_RUNNER=sdk` to use the Agent SDK instead.
+   Each developer opens every client repo once in interactive Claude Code (`claude` in its root) and accepts the
+   trust dialog. Until then, headless runs ignore the repo's `.claude/settings.json` allow list, every edit is
+   denied, and the build stops with "Claude Code has not trusted this repository".
 2. **Client repo**: `node scripts/install.mjs <repo>`. Then in `ai-sdlc.config.json`: scope templates for your
    layout (including `wiring`), the `app` service (`APP_START_COMMAND`, `APP_URL`), check commands. Add a
    `## Client system` section to `docs/ARCHITECTURE.md` and draft `CONVENTIONS.md` from the code (plan §5.1).
-3. **Jira**: statuses "In Progress" (the ready status), "Needs answers", "Fix deployed", and the statuses the
-   pipeline moves tickets to: "Blocked", "In Review", "Done" (names in config, `jira.stages`; a status your
-   workflow lacks is skipped). Separate credentials for read (extract, CI drift check) and write (ops, ticket
-   moves in `release.yml`).
-4. **GitHub**: secrets `ANTHROPIC_API_KEY`, `REVIEW_BASE_URL`, `REVIEW_API_KEY`, `JIRA_*`; variables
-   `REVIEW_MODEL`, `DEPLOY_COMMAND`, `ROLLBACK_COMMAND`, `HEALTH_URL`, `OPS_*`. Fill in `.github/CODEOWNERS`,
-   then `scripts/branch-protection.sh apply` and `verify`.
+   **End-to-end runner**: QA walks the app in a browser and writes Playwright specs into the walk folder
+   (`scope.walk`, e.g. `e2e/`), which then run on every ticket. If the repo has no runner yet: add
+   `@playwright/test` as a dev dependency, a `playwright.config.ts` whose `testDir` is that folder and whose
+   `use.baseURL` reads `APP_URL`, a script such as `"test:e2e": "playwright test --pass-with-no-tests"`, and set
+   `checks.integration` to run it (QA runs it with the app started). Install a browser once per machine:
+   `npx playwright install chromium`. Keep the walk folder out of the unit test runner (e.g. vitest `exclude`).
+3. **Jira**: two connections, then the statuses.
+   - **API token, for the pipeline's scripts.** `extract`, `plan`, the build, `pr` and `doctor` read tickets, post
+     comments and move statuses through the Jira REST API. Each developer sets `JIRA_BASE_URL`
+     (`https://<site>.atlassian.net`), `JIRA_EMAIL` and `JIRA_API_TOKEN` (create one at
+     id.atlassian.com → Security → API tokens) in their shell; CI gets the same values as `JIRA_*` secrets (step 4).
+   - **Atlassian MCP, for Claude Code.** `.mcp.json` (written by the installer) declares the `atlassian` server.
+     `/ticket` uses it to create and edit issues, and the extract agent can read a ticket through it. Each
+     developer signs in once: run `claude` in the repo, then `/mcp` → `atlassian` → authenticate in the browser.
+
+   Give the project's workflow these statuses, named exactly as below (or change the names in
+   `ai-sdlc.config.json` → `jira`). Let every status be reached from any status (global transitions): the
+   pipeline only moves a ticket along a transition the workflow allows from where the ticket is.
+
+   | Status | What moves a ticket there | Config key |
+   | --- | --- | --- |
+   | To Do | a new ticket (Jira's default) | none |
+   | In Progress | a person, to start extraction; `plan` moves it back here once questions are answered | `readyStatus` |
+   | Needs answers | `extract`, when the IR has open questions or unplaced text | `needsAnswersStatus` |
+   | Blocked | the build, when a unit escalates after its attempts | `stages.escalated` |
+   | In Review | `pr`, when the pull request opens | `stages.inReview` |
+   | Done | `release.yml`, after the watch window | `stages.released` |
+   | Fix deployed | the ops loop, after a fix for an incident ticket ships (only if you use ops) | `fixDeployedStatus` |
+
+   A status the workflow lacks, or one set to `""`, is skipped: the ticket stays where it is and the command says
+   so. `ai-sdlc doctor --project <KEY>` lists any that are missing. Use separate credentials for read (extract,
+   CI drift check) and write (ops, ticket moves in `release.yml`).
+4. **GitHub**: each developer installs the `gh` CLI and runs `gh auth login` (`pr` pushes and opens the pull
+   request with it; `review` and `learn` use it too). For CI: secrets `ANTHROPIC_API_KEY`, `REVIEW_BASE_URL`,
+   `REVIEW_API_KEY`, `JIRA_*`; variables `REVIEW_MODEL`, `DEPLOY_COMMAND`, `ROLLBACK_COMMAND`, `HEALTH_URL`,
+   `OPS_*`. Fill in `.github/CODEOWNERS`, then `scripts/branch-protection.sh apply` and `verify`. `apply` also sets
+   the repo to merge commits only and to delete branches on merge (see docs/CONVENTIONS.md#merging); branch
+   protection itself needs a public repo or a paid GitHub plan.
 5. **Telemetry**: set `OTEL_EXPORTER_OTLP_ENDPOINT` to send events to your store; the JSONL file sink is always on.
 6. **Alerts**: relay your alerting webhook to `repository_dispatch` (type `alert`). Alertmanager payloads are understood.
 7. **Check it**: each developer runs `ai-sdlc doctor --project <JIRA KEY>` in the repo before the first ticket. It checks
