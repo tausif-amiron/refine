@@ -109,6 +109,23 @@ useOne({
 });
 ```
 
+## Request cancellation
+
+`getList`, `getMany`, `getOne` and `custom` (GET) forward `meta.signal` to axios as the `signal` option. Refine hooks pass the signal of the query, so in-flight requests are cancelled when the query is cancelled, for example when the component unmounts or the filters change. Write methods (`create`, `update`, `deleteOne`) and `custom` with `post`, `put`, `patch` or `delete` do not use the signal. Nothing changes when no signal is present.
+
+```tsx
+const controller = new AbortController();
+
+dataProvider.getOne({
+  resource: "posts",
+  id: 1,
+  meta: { signal: controller.signal },
+});
+
+// cancels the request
+controller.abort();
+```
+
 ## Customizing the data provider <GuideBadge id="packages/cli/#swizzle" />
 
 In some cases, you may need to customize the data provider to work with a REST API that doesn't follow the simple-rest design. In this case, you can use the `swizzle` command to customize the data provider.
