@@ -107,7 +107,7 @@ const stepComment = (step: Step, ticket: string, r: { code: number; output: stri
 /** Exit codes that are outcomes, not failures: extract 3 = the IR has questions for a person. */
 const stepOk = (step: Step, code: number) => code === 0 || (step === "extract" && code === 3);
 
-export async function paperclipRun(o: { root: string; api: PaperclipApi; runStep: StepRunner; runId: string; agentId: string; companyId: string; maxSteps?: number; commit?: (message: string) => void }): Promise<string> {
+export async function paperclipRun(o: { root: string; api: PaperclipApi; runStep: StepRunner; runId: string; agentId: string; companyId: string; maxSteps?: number; commit?: (message: string) => void; isMerged?: (url: string) => Promise<boolean | undefined> }): Promise<string> {
   const { api } = o;
   const ctx = (await api.getRun(o.runId)).contextSnapshot ?? {};
   if (!ctx.issueId) return "no issue in this run's context; nothing to do";
@@ -145,9 +145,17 @@ export async function paperclipRun(o: { root: string; api: PaperclipApi; runStep
     if (next.kind === "review") {
       // Paperclip refuses in_review without an owner for the next action, so review is a board approval too.
       if (mergeApproved) {
-        await api.comment(issue.id, `The board confirmed ${next.url} is reviewed and merged. Done.`);
-        await api.setStatus(issue.id, "done");
-        return "done";
+        // Code decides, not the click: an approval only closes the issue when GitHub says the PR merged (RT-3's was
+        // approved 21 seconds after it opened, unmerged).
+        const merged = await (o.isMerged ?? githubMerged)(next.url).catch(() => undefined);
+        if (merged) {
+          await api.comment(issue.id, `${next.url} is merged on GitHub. Done.`);
+          await api.setStatus(issue.id, "done");
+          return "done";
+        }
+        await api.comment(issue.id, merged === false
+          ? `${next.url} is still open on GitHub (not merged), so this issue stays open. Approve again after merging it.`
+          : `I could not check ${next.url} on GitHub, so this issue stays open. Approve again once it is merged.`);
       }
       return waitFor("merge", `Review and merge ${next.url} on GitHub (a person approves the PR itself), then approve here to close this issue.`);
     }
@@ -186,6 +194,16 @@ export async function paperclipRun(o: { root: string; api: PaperclipApi; runStep
     if (!stepOk(step, r.code)) return waitFor("failure", `\`ai-sdlc ${step} ${ticket}\` failed (exit ${r.code}; output above). A developer looks at it, then approves to retry.`);
   }
   return waitFor("failure", `Stopped after ${o.maxSteps ?? 6} steps without reaching a person or a PR. A developer looks at it, then approves to retry.`);
+}
+
+/** Is this GitHub PR merged? Asks GitHub's public API (the fork is public); undefined when it cannot tell. */
+export async function githubMerged(url: string, fetchImpl: typeof fetch = fetch): Promise<boolean | undefined> {
+  const m = url.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
+  if (!m) return undefined;
+  const r = await fetchImpl(`https://api.github.com/repos/${m[1]}/${m[2]}/pulls/${m[3]}`, { headers: { accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(15_000) });
+  if (!r.ok) return undefined;
+  const j = (await r.json()) as { merged?: boolean };
+  return typeof j.merged === "boolean" ? j.merged : undefined;
 }
 
 /** Mirror ready Jira tickets into Paperclip issues assigned to the runner (one per ticket; titles start with the key). */
