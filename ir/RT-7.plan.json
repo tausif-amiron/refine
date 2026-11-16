@@ -1,0 +1,94 @@
+{
+  "contracts": [],
+  "ir_hash": "sha256:6d15444a4b188109cf43961d56ffa28ba81a41b70052e48279405aad7bc14804",
+  "schema": "ai-sdlc.plan.v1",
+  "ticket": "RT-7",
+  "units": [
+    {
+      "agent": "dev-module",
+      "consumes": [],
+      "dependsOn": [],
+      "exposes": [],
+      "id": "unit-module-rest-signal-forwarding",
+      "ir": {
+        "entities": [],
+        "modules": [
+          "rest signal forwarding"
+        ],
+        "screens": [],
+        "services": []
+      },
+      "kind": "module",
+      "model": "sonnet",
+      "name": "rest signal forwarding",
+      "scope": [
+        ".changeset/rest-abort-signal.md",
+        "documentation/docs/data/packages/rest-data-provider/index.md",
+        "owed.yaml",
+        "packages/rest/src/create-data-provider.ts",
+        "packages/rest/test/methods/custom.spec.ts",
+        "packages/rest/test/methods/getList.spec.ts",
+        "packages/rest/test/methods/getMany.spec.ts",
+        "packages/rest/test/methods/getOne.spec.ts",
+        "packages/rest/test/methods/signal.spec.ts"
+      ],
+      "slug": "rest-signal-forwarding"
+    },
+    {
+      "agent": "dev-module",
+      "consumes": [],
+      "dependsOn": [],
+      "exposes": [],
+      "id": "unit-module-simple-rest-signal-forwarding",
+      "ir": {
+        "entities": [],
+        "modules": [
+          "simple-rest signal forwarding"
+        ],
+        "screens": [],
+        "services": []
+      },
+      "kind": "module",
+      "model": "sonnet",
+      "name": "simple-rest signal forwarding",
+      "scope": [
+        ".changeset/simple-rest-abort-signal.md",
+        "documentation/docs/data/packages/simple-rest/index.md",
+        "owed.yaml",
+        "packages/simple-rest/src/provider.ts",
+        "packages/simple-rest/test/custom/index.spec.ts",
+        "packages/simple-rest/test/getList/index.spec.ts",
+        "packages/simple-rest/test/getOne/index.spec.ts",
+        "packages/simple-rest/test/signal/index.spec.ts"
+      ],
+      "slug": "simple-rest-signal-forwarding"
+    },
+    {
+      "agent": "qa",
+      "consumes": [],
+      "dependsOn": [
+        "unit-module-rest-signal-forwarding",
+        "unit-module-simple-rest-signal-forwarding"
+      ],
+      "exposes": [],
+      "id": "unit-walk",
+      "ir": {
+        "entities": [],
+        "modules": [
+          "rest signal forwarding",
+          "simple-rest signal forwarding"
+        ],
+        "screens": [],
+        "services": []
+      },
+      "kind": "walk",
+      "model": "sonnet",
+      "name": "walk",
+      "scope": [
+        "packages/simple-rest/test/walk/**",
+        "owed.yaml"
+      ],
+      "slug": "walk"
+    }
+  ]
+}

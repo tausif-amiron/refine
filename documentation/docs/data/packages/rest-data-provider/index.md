@@ -95,6 +95,10 @@ While Refine provides many built-in data providers like `simple-rest`, `strapi-v
 
 :::
 
+### Request cancellation
+
+The read methods (`getList`, `getOne`, `getMany` and `custom` with the `get` method) forward `meta.signal` to ky as the `signal` option, so requests are cancelled when the query is cancelled (for example on unmount or when filters change). Write methods (`create`, `update`, `deleteOne` and the `*Many` writes) ignore the signal. When no signal is present, requests are sent as before.
+
 ### getList
 
 The `getList` method is used whenever refine needs to **fetch a list of records**.
