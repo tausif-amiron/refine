@@ -1,0 +1,533 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-sdlc.local/ir/schema.json",
+  "title": "Intermediate Representation of one ticket",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "ticket",
+    "title",
+    "ticket_hash",
+    "sealed_hash",
+    "sealed_acceptance_criteria",
+    "entities",
+    "roles",
+    "screens",
+    "services",
+    "external_systems",
+    "limits",
+    "unplaced",
+    "questions"
+  ],
+  "properties": {
+    "schema": {
+      "const": "ai-sdlc.ir.v1"
+    },
+    "ticket": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9]+-[0-9]+$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ticket_hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Hash of the ticket text at extraction. Set by code, not the model."
+    },
+    "sealed_hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Hash of sealed_acceptance_criteria. Set by code."
+    },
+    "sealed_acceptance_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "text"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^AC-[0-9]+$"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "fields",
+          "anchor"
+        ],
+        "properties": {
+          "name": {
+            "$ref": "#/$defs/name"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "type"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "type": {
+                  "enum": [
+                    "string",
+                    "text",
+                    "integer",
+                    "number",
+                    "boolean",
+                    "date",
+                    "datetime",
+                    "money",
+                    "enum",
+                    "id",
+                    "ref"
+                  ]
+                },
+                "required": {
+                  "type": "boolean"
+                },
+                "pii": {
+                  "type": "boolean"
+                },
+                "values": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "ref": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "anchor": {
+            "$ref": "#/$defs/anchor"
+          }
+        }
+      }
+    },
+    "roles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "permissions",
+          "anchor"
+        ],
+        "properties": {
+          "name": {
+            "$ref": "#/$defs/name"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "anchor": {
+            "$ref": "#/$defs/anchor"
+          }
+        }
+      }
+    },
+    "screens": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "states",
+          "consumes",
+          "anchor"
+        ],
+        "properties": {
+          "name": {
+            "$ref": "#/$defs/name"
+          },
+          "states": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "consumes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/operation"
+            },
+            "description": "Operations like 'GET /invoices' that the screen calls."
+          },
+          "anchor": {
+            "$ref": "#/$defs/anchor"
+          }
+        }
+      }
+    },
+    "services": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "kind",
+          "exposes",
+          "anchor"
+        ],
+        "properties": {
+          "name": {
+            "$ref": "#/$defs/name"
+          },
+          "kind": {
+            "enum": [
+              "service",
+              "legacy-wrapper"
+            ]
+          },
+          "entities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "exposes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "method",
+                "path"
+              ],
+              "properties": {
+                "method": {
+                  "enum": [
+                    "GET",
+                    "POST",
+                    "PUT",
+                    "PATCH",
+                    "DELETE"
+                  ]
+                },
+                "path": {
+                  "type": "string",
+                  "pattern": "^/"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "roles": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "request_entity": {
+                  "type": "string"
+                },
+                "response_entity": {
+                  "type": "string"
+                },
+                "response_list": {
+                  "type": "boolean"
+                },
+                "query": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "consumes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Names of other services or external systems."
+          },
+          "emits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_.]*$"
+                },
+                "entity": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "anchor": {
+            "$ref": "#/$defs/anchor"
+          }
+        }
+      }
+    },
+    "external_systems": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "access",
+          "anchor"
+        ],
+        "properties": {
+          "name": {
+            "$ref": "#/$defs/name"
+          },
+          "access": {
+            "enum": [
+              "api",
+              "page",
+              "folder",
+              "db",
+              "file"
+            ]
+          },
+          "rate_limit": {
+            "type": "string"
+          },
+          "anchor": {
+            "$ref": "#/$defs/anchor"
+          }
+        }
+      }
+    },
+    "limits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "value",
+          "anchor"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "volume",
+              "latency",
+              "retention",
+              "availability",
+              "other"
+            ]
+          },
+          "value": {
+            "type": "string"
+          },
+          "anchor": {
+            "$ref": "#/$defs/anchor"
+          }
+        }
+      }
+    },
+    "modules": {
+      "description": "Code changes that are not entities, screens or services: a utility, a CLI flag, tooling. Optional; each becomes one unit whose SCOPE is exactly its files and tests.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "files",
+          "tests",
+          "behaviours",
+          "anchor"
+        ],
+        "properties": {
+          "name": {
+            "$ref": "#/$defs/name"
+          },
+          "files": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "$ref": "#/$defs/repoPath"
+            },
+            "description": "Every file the change may touch (new or existing), repo-relative. This is the unit's SCOPE."
+          },
+          "tests": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "$ref": "#/$defs/repoPath"
+            },
+            "description": "Test files that prove the behaviours (new or existing)."
+          },
+          "behaviours": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 5
+            },
+            "description": "Observable behaviours, each testable; include what must stay unchanged."
+          },
+          "packages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^(@[a-z0-9][a-z0-9._~-]*/)?[a-z0-9][a-z0-9._~-]*$"
+                },
+                "dev": {
+                  "type": "boolean"
+                },
+                "version": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Packages the change needs. The foundation unit adds them (it owns package.json and lockfiles)."
+          },
+          "uses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Other modules this one depends on (built first)."
+          },
+          "anchor": {
+            "$ref": "#/$defs/anchor"
+          }
+        }
+      }
+    },
+    "unplaced": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "text",
+          "reason"
+        ],
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "q",
+          "affects",
+          "if_wrong"
+        ],
+        "properties": {
+          "q": {
+            "type": "string",
+            "minLength": 5
+          },
+          "affects": {
+            "type": "string",
+            "minLength": 3
+          },
+          "if_wrong": {
+            "type": "string",
+            "minLength": 3
+          },
+          "answer": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z][A-Za-z0-9 _-]*$"
+    },
+    "operation": {
+      "type": "string",
+      "pattern": "^(GET|POST|PUT|PATCH|DELETE) /"
+    },
+    "anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "quote"
+      ],
+      "properties": {
+        "quote": {
+          "type": "string",
+          "minLength": 3,
+          "description": "Exact text copied from the ticket. Checked by code to be a substring of the ticket."
+        },
+        "section": {
+          "type": "string"
+        }
+      }
+    },
+    "repoPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?![/~])(?!.*(^|/)\\.\\.(/|$))[^\\s]+$",
+      "description": "Repo-relative path or glob; no leading slash, no '..'."
+    }
+  }
+}

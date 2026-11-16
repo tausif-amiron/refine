@@ -8,7 +8,9 @@
       "theme.d.ts",
       "documentation/plugins",
       "documentation/static",
-      "package.json"
+      "package.json",
+      "tools/ai-sdlc/**",
+      ".ai-sdlc/**"
     ]
   },
   "formatter": {

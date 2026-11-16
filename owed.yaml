@@ -1,0 +1,4 @@
+# Open hand-offs between units. Schema: docs/CONVENTIONS.md#owed-yaml
+# The loop fails a provider while an entry addressed to it is open,
+# and holds a consumer (blocked) until the entries it opened are closed.
+[]

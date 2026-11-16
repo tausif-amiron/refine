@@ -44,3 +44,13 @@ examples/**/package-lock.json
 
 # Local Netlify folder
 .netlify
+# ai-sdlc
+.ai-sdlc/
+# ai-sdlc: the workflow's Claude Code files are versioned with the repo (agents, permissions, hooks)
+!.claude/
+.claude/*
+!.claude/settings.json
+!.claude/agents/
+!.claude/skills/
+!.claude/commands/
+!.claude/rules/

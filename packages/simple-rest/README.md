@@ -62,6 +62,10 @@ const App = () => {
 };
 ```
 
+### Pagination total (`x-total-count`)
+
+`getList` reads `total` from the `x-total-count` response header. Any finite, non-negative number is used as is, so `x-total-count: 0` gives `total: 0`. When the header is missing, empty, non-numeric, negative or not finite, `total` falls back to `data.length` (the number of records in the response). For correct pagination, make sure your API sends `x-total-count` and exposes it via CORS (`Access-Control-Expose-Headers: x-total-count`).
+
 ## Documentation
 
 - For more detailed information and usage, refer to the [refine data provider documentation](https://refine.dev/docs/core/providers/data-provider).

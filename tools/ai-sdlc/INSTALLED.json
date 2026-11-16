@@ -1,0 +1,22 @@
+{
+  "version": "0.1.0",
+  "installed_at": "2026-11-16T03:19:13.381Z",
+  "files": [
+    "tools/ai-sdlc/",
+    ".claude/agents/",
+    ".claude/skills/",
+    ".claude/commands/",
+    ".claude/settings.json (merged)",
+    ".mcp.json (merged)",
+    "CLAUDE.md",
+    "docs/CONVENTIONS.md",
+    "docs/TESTING.md",
+    "docs/TELEMETRY.md",
+    "docs/ARCHITECTURE.md",
+    "docs/IR.md",
+    ".github/workflows/gates.yml",
+    ".github/workflows/review.yml",
+    ".github/workflows/release.yml",
+    ".github/workflows/ops.yml"
+  ]
+}
