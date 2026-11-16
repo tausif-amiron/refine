@@ -116,6 +116,14 @@ nothing opens on the upstream project unless `pr.repo` says so. Defaults: `origi
 
 ## paperclip
 
+**Dashboard.** With `paperclip.url`, `paperclip.companyId` and `paperclip.projectId` set (`report` defaults to on),
+every command reports on the ticket's Paperclip issue (`orchestrator/dashboard.ts`): one issue per ticket in the repo's
+project, named after the IR's title, owned by the board user (Paperclip will not put an unassigned issue in progress).
+Each stage posts what started and how it ended; the build, gates and QA post their progress lines as they happen. A
+person-step (IR questions, an escalated unit, a failure) blocks the issue on the board with what to do; an open PR
+moves it to in review. Reporting never breaks a run (one warning if Paperclip is down), and it only reports: it is not
+a runner, so it starts nothing. `PAPERCLIP_BOARD_KEY` when the instance requires authentication.
+
 Paperclip (self-hosted agent control plane) is the dashboard and scheduler around the workflow; it does not replace
 any step or gate. Jira stays the source of truth, code still decides pass or fail, and a person still approves.
 

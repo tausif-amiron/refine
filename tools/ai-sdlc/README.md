@@ -113,7 +113,8 @@ shows each of these on a small ticket, including a deliberately failing unit tha
    Claude Code against the pin, `gh` sign-in, the git remote, the configured checks, scope templates against the
    repo's folders, environments for unit worktrees, the review model, the Jira login and the project's statuses.
    It only reads; `--preflight` also runs the full checks at the current commit. It exits 1 on any failure.
-8. **Optional, Paperclip**: a Paperclip "process" agent per repository runs `ai-sdlc paperclip-run`, and
+8. **Optional, Paperclip**: as a live dashboard, set `paperclip.url`, `companyId` and `projectId`; every stage of every
+   ticket then shows on its Paperclip issue. As a runner, a Paperclip "process" agent per repository runs `ai-sdlc paperclip-run`, and
    `ai-sdlc paperclip-sync` mirrors ready Jira tickets into its issues. Every step a person owns becomes a board
    approval in Paperclip. Setup: `docs/ARCHITECTURE.md#paperclip`.
 

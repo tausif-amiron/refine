@@ -76,7 +76,9 @@ export function dashboardFor(root: string, cfg: Config, api?: DashboardApi, warn
     await safely(async () => {
       const id = await issueId(ticket);
       await client!.comment(id, state === "progress" ? `**${STAGE_NAME[s]}**: ${text}` : `**${STAGE_NAME[s]}** ${STATE_WORD[state]}: ${text}`);
-      if (state === "progress") return;
+      // Inside a Paperclip run the runner agent owns the issue and its status (paperclip-run): only comment, or a
+      // status or owner change would take the issue from the agent.
+      if (state === "progress" || process.env.PAPERCLIP_RUN_ID) return;
       // A person-step blocks the issue on the board, saying what they do; a PR waits for review; otherwise it is moving.
       const patch = state === "waiting" || state === "failed"
         ? { status: "blocked", unblockDescriptor: { owner: "board", action: state === "failed" ? `Look at the failure: ${text}` : text } }

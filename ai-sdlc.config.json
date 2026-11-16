@@ -167,7 +167,7 @@
   "paperclip": {
     "url": "http://127.0.0.1:3100",
     "companyId": "4f59962e-add6-400a-99ee-b29d04433718",
-    "agentId": "",
+    "agentId": "03d48900-f0ae-47db-9a60-d1a3189b65cb",
     "project": "RT",
     "projectId": "f9f71745-8a94-4f63-b91c-4afeb2158b6e",
     "report": true
