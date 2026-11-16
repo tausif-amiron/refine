@@ -55,19 +55,20 @@ export function usageComment(u: ReturnType<typeof planUsage>, ticket: string): s
   const window = t.below_resolution
     ? `under 1% each (Claude Code reports the plan window in whole percents, so no single run registered)`
     : t.five_hour_pct !== undefined ? `${t.five_hour_pct.toFixed(1)}%${t.window_source === "measured" ? "" : ` (${t.window_source})`}` : "not reported (an API key has no plan window)";
-  const lines = [
-    `**Usage for ${ticket}**${sp ? ` (${sp} story points${t.estimate_hours ? `, estimated ${t.estimate_hours} h` : ""})` : ""}`,
-    "",
+  const list = [
     `- Cost: $${t.cost_usd.toFixed(2)}${sp ? ` ($${(t.cost_usd / sp).toFixed(2)} per story point)` : ""}${sub ? ". API-equivalent: on a subscription this is included in the plan, not billed" : ""}.`,
     `- Tokens: ${big(t.tokens_in)} in${t.tokens_cache_read ? ` (${big(t.tokens_cache_read)} from cache)` : ""}, ${big(t.tokens_out)} out, over ${t.runs} agent run(s), ${t.agent_minutes} agent-minutes.`,
     `- 5-hour window used by these runs: ${window}.`,
     t.five_hour_span ? `- The 5-hour window went ${t.five_hour_span.from}% → ${t.five_hour_span.to}% from the first run to the last. That is an upper bound: it includes any other Claude use on the account in that time.` : "",
-    t.seven_day_pct !== undefined && !t.below_resolution ? `- Week (7-day) window: ${t.seven_day_pct.toFixed(1)}%.` : "",
-    u.per_point.points_per_window ? `- Across measured tickets: about ${u.per_point.points_per_window.toFixed(1)} story points per 5-hour window.` : "",
-    "",
+    t.week_below_resolution ? "- Week (7-day) window: under 1%." : t.seven_day_pct !== undefined ? `- Week (7-day) window: ${t.seven_day_pct.toFixed(1)}%.` : "",
+    u.per_point.points_per_window ? `- Projection: about ${u.per_point.points_per_window.toFixed(1)} story points per 5-hour window (from ${u.per_point.measured_tickets} measured tickets), if the plan is used only by the workflow.` : "",
+  ].filter(Boolean);
+  const lines = [
+    `**Usage for ${ticket}**${sp ? ` (${sp} story points${t.estimate_hours ? `, estimated ${t.estimate_hours} h` : ""})` : ""}`,
+    "", ...list, "",
     "Per-run costs are in this issue's cost summary. Full report: `ai-sdlc report --since 30d --jira`.",
   ];
-  return lines.filter((l, i, a) => l || (i > 0 && a[i - 1])).join("\n").trim();
+  return lines.join("\n");
 }
 
 interface UsageRecord { costsPosted?: string[]; summaryPosted?: boolean }
