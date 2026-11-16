@@ -15,9 +15,16 @@ import { spawn } from "node:child_process";
 import { WORKFLOW_ROOT } from "./config.ts";
 import { commitAll } from "./git.ts";
 import { openIrQuestions, parseCommand, readAdvice, type Command } from "./advise.ts";
+import type { CostEventBody } from "./usage.ts";
 import { stableStringify } from "./util.ts";
 
 export type Step = "extract" | "suggest" | "plan" | "run" | "pr";
+/**
+ * Starts every comment the workflow posts as the board (stage updates from the CLI, usage summaries). Paperclip counts
+ * board comments as a person's, so the runner must recognise its own (AIS-11: a usage summary was taken as a reply
+ * in a tutor session). An HTML comment, so it does not show.
+ */
+export const WORKFLOW_MARK = "<!-- ai-sdlc -->";
 export interface QuestionOption { id: string; label: string; description?: string }
 export interface AskedQuestion { id: string; prompt: string; helpText?: string; options?: QuestionOption[] }
 export interface IssueComment { id: string; body: string; createdAt: string; authorUserId?: string | null; authorAgentId?: string | null }
@@ -136,6 +143,8 @@ const stepOk = (step: Step, code: number) => code === 0 || (step === "extract" &
 export async function paperclipRun(o: { root: string; api: PaperclipApi; runStep: StepRunner; runId: string; agentId: string; companyId: string; maxSteps?: number; commit?: (message: string) => void; isMerged?: (url: string) => Promise<boolean | undefined>;
   /** Answer a developer's /command typed as a comment (orchestrator/advise.ts). */
   runCommand?: CommandRunner;
+  /** Post the ticket's new agent-run costs to Paperclip, and with `summary` the usage comment (orchestrator/usage.ts). */
+  reportUsage?: (ticket: string, issueId: string, summary: boolean) => Promise<unknown>;
   /** Put the working copy on the ticket's branch (several tickets share one checkout); throws when it cannot. */
   useBranch?: (ticket: string) => void }): Promise<string> {
   const { api } = o;
@@ -177,13 +186,15 @@ export async function paperclipRun(o: { root: string; api: PaperclipApi; runStep
   }
 
   let suggestTried = false;
+  // Usage reporting never changes the outcome of a run.
+  const usage = async (summary: boolean) => { await o.reportUsage?.(ticket, issue.id, summary).catch(() => undefined); };
   try {
     // Woken by a person's comment: a /command (or a reply in a /tutor session) gets its answer on the issue.
     if (ctx.wakeCommentId && o.runCommand) {
       const c = await api.getComment(issue.id, ctx.wakeCommentId).catch(() => undefined);
-      if (c && c.authorUserId && !c.authorAgentId) {
+      if (c && c.authorUserId && !c.authorAgentId && !c.body.trimStart().startsWith(WORKFLOW_MARK)) {
         const r = await o.runCommand(ticket, parseCommand(c.body), c.body);
-        if (r) await api.comment(issue.id, r.reply);
+        if (r) { await api.comment(issue.id, r.reply); await usage(false); }
       }
     }
     return await moveForward();
@@ -228,6 +239,7 @@ export async function paperclipRun(o: { root: string; api: PaperclipApi; runStep
           await api.setStatus(issue.id, "in_progress");
           const r = await o.runStep("suggest", ticket);
           await api.comment(issue.id, stepComment("suggest", ticket, r));
+          await usage(false);
           open = openQuestions(o.root, ticket);
           continue;
         }
@@ -266,6 +278,7 @@ export async function paperclipRun(o: { root: string; api: PaperclipApi; runStep
     await api.setStatus(issue.id, "in_progress");
     const r = await o.runStep(step, ticket);
     await api.comment(issue.id, stepComment(step, ticket, r));
+    await usage(step === "pr" && stepOk(step, r.code));
     if (!stepOk(step, r.code)) return waitFor("failure", `\`ai-sdlc ${step} ${ticket}\` failed (exit ${r.code}; output above). A developer looks at it, then approves to retry.`);
   }
   return waitFor("failure", `Stopped after ${o.maxSteps ?? 6} steps without reaching a person or a PR. A developer looks at it, then approves to retry.`);
@@ -337,6 +350,7 @@ export class HttpPaperclip implements PaperclipApi {
   }
   async listComments(issueId: string) { const r = await this.call<IssueComment[] | { comments: IssueComment[] }>("GET", `/issues/${issueId}/comments`); return Array.isArray(r) ? r : r.comments ?? []; }
   getComment(issueId: string, commentId: string) { return this.call<IssueComment>("GET", `/issues/${issueId}/comments/${commentId}`); }
+  async postCost(companyId: string, body: CostEventBody) { await this.call("POST", `/companies/${companyId}/cost-events`, body); }
   async withdraw(issueId: string, interactionId: string, reason: string) { await this.call("POST", `/issues/${issueId}/interactions/${interactionId}/withdraw`, { reason }); }
   async askQuestions(issueId: string, title: string, questions: AskedQuestion[]) {
     await this.call("POST", `/issues/${issueId}/interactions`, {

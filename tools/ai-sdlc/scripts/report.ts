@@ -59,6 +59,11 @@ export interface UsageRow {
   /** measured: every run reported the plan window; estimated: none did (percent per dollar from measured runs);
    *  mixed: some of each; none: nothing to go on. */
   window_source: "measured" | "estimated" | "mixed" | "none";
+  /** Every measured run used under 1% (samples are whole percents), so the measured sum reads 0 though work was done. */
+  below_resolution?: boolean;
+  /** The 5-hour window at the ticket's first measured run start and last measured run end (same window): an upper
+   *  bound, since it includes any other Claude use on the account in between. */
+  five_hour_span?: { from: number; to: number };
 }
 
 /** What one run used of a window: end - start; across a reset, only what it used in the new window. */
@@ -81,9 +86,11 @@ export function planUsage(events: TelemetryEvent[], points: Record<string, numbe
     return cost > 0 ? m.reduce((s, e) => s + used(e.plan_window![k])!, 0) / cost : undefined;
   };
   const pctPerUsd = { five_hour: per("five_hour"), seven_day: per("seven_day") };
-  const rows = new Map<string, UsageRow & { _m: number; _u: number; f: number; w: number }>();
+  type Sample = { at: string; v: number; resets?: string };
+  type Row = UsageRow & { _m: number; _u: number; f: number; w: number; _mc: number; _first?: Sample; _last?: Sample };
+  const rows = new Map<string, Row>();
   for (const e of runs) {
-    const r = rows.get(e.ticket!) ?? { ticket: e.ticket!, runs: 0, agent_minutes: 0, cost_usd: 0, tokens_in: 0, tokens_out: 0, window_source: "none" as const, _m: 0, _u: 0, f: 0, w: 0 };
+    const r: Row = rows.get(e.ticket!) ?? { ticket: e.ticket!, runs: 0, agent_minutes: 0, cost_usd: 0, tokens_in: 0, tokens_out: 0, window_source: "none", _m: 0, _u: 0, f: 0, w: 0, _mc: 0 };
     r.runs++;
     r.cost_usd += e.cost_usd ?? 0;
     r.tokens_in += e.tokens_in ?? 0;
@@ -93,16 +100,25 @@ export function planUsage(events: TelemetryEvent[], points: Record<string, numbe
     const d = e.detail as { story_points?: number; estimate_hours?: number } | undefined;
     if (typeof d?.story_points === "number") r.story_points = d.story_points;
     if (typeof d?.estimate_hours === "number") r.estimate_hours = d.estimate_hours;
-    if (e.plan_window?.five_hour) { r._m++; r.f += used(e.plan_window.five_hour)!; r.w += used(e.plan_window.seven_day) ?? (pctPerUsd.seven_day ?? 0) * (e.cost_usd ?? 0); }
+    if (e.plan_window?.five_hour) {
+      const fh = e.plan_window.five_hour, at = e.started_at ?? e.ended_at ?? "";
+      if (!r._first || at < r._first.at) r._first = { at, v: fh.start, resets: fh.resets_at };
+      if (!r._last || at >= r._last.at) r._last = { at, v: fh.end, resets: fh.resets_at };
+      r._mc += e.cost_usd ?? 0;
+      r._m++; r.f += used(e.plan_window.five_hour)!; r.w += used(e.plan_window.seven_day) ?? (pctPerUsd.seven_day ?? 0) * (e.cost_usd ?? 0); }
     else if ((e.cost_usd ?? 0) > 0) { r._u++; if (pctPerUsd.five_hour !== undefined) { r.f += pctPerUsd.five_hour * e.cost_usd!; r.w += (pctPerUsd.seven_day ?? 0) * e.cost_usd!; } }
     rows.set(e.ticket!, r);
   }
-  const tickets: UsageRow[] = [...rows.values()].map(({ _m, _u, f, w, ...r }) => {
+  const tickets: UsageRow[] = [...rows.values()].map(({ _m, _u, f, w, _mc, _first, _last, ...r }) => {
     if (points[r.ticket] !== undefined) r.story_points = points[r.ticket];
     if (hours[r.ticket] !== undefined) r.estimate_hours = hours[r.ticket];
     const source: UsageRow["window_source"] = _m && _u ? "mixed" : _m ? "measured" : _u && pctPerUsd.five_hour !== undefined ? "estimated" : "none";
     const known = source !== "none";
-    return { ...r, agent_minutes: Math.round(r.agent_minutes), window_source: source, ...(known ? { five_hour_pct: round1(f), ...(pctPerUsd.seven_day !== undefined || _m ? { seven_day_pct: round1(w) } : {}) } : {}) };
+    const extra = {
+      ...(_m && _mc > 0 && f === 0 && !_u ? { below_resolution: true } : {}),
+      ...(_first && _last && _first.resets === _last.resets ? { five_hour_span: { from: _first.v, to: _last.v } } : {}),
+    };
+    return { ...r, ...extra, agent_minutes: Math.round(r.agent_minutes), window_source: source, ...(known ? { five_hour_pct: round1(f), ...(pctPerUsd.seven_day !== undefined || _m ? { seven_day_pct: round1(w) } : {}) } : {}) };
   }).sort((a, b) => a.ticket.localeCompare(b.ticket, undefined, { numeric: true }));
   const sized = tickets.filter((t) => t.story_points);
   const pts = sized.reduce((s, t) => s + t.story_points!, 0);
@@ -142,11 +158,12 @@ export function table(r: ReturnType<typeof aggregate>): string {
 
 const big = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(Math.round(n)));
 const pct = (n?: number) => (n === undefined ? "-" : `${n.toFixed(1)}%`);
+const winPct = (t: UsageRow, n?: number) => (t.below_resolution && !n ? "<1%" : pct(n));
 
 /** The plan usage section as text: per ticket, then per story point and the projection. */
 export function usageTable(u: ReturnType<typeof planUsage>): string {
   const head = "ticket        SP  est(h)  agent(min)  cost($)  tokens in/out     5h-window  7-day   source";
-  const rows = u.tickets.map((t) => `${t.ticket.padEnd(13)} ${String(t.story_points ?? "-").padStart(2)} ${String(t.estimate_hours ?? "-").padStart(7)} ${String(t.agent_minutes).padStart(11)} ${t.cost_usd.toFixed(2).padStart(8)}  ${`${big(t.tokens_in)}/${big(t.tokens_out)}`.padEnd(16)} ${pct(t.five_hour_pct).padStart(9)} ${pct(t.seven_day_pct).padStart(6)}   ${t.window_source}`);
+  const rows = u.tickets.map((t) => `${t.ticket.padEnd(13)} ${String(t.story_points ?? "-").padStart(2)} ${String(t.estimate_hours ?? "-").padStart(7)} ${String(t.agent_minutes).padStart(11)} ${t.cost_usd.toFixed(2).padStart(8)}  ${`${big(t.tokens_in)}/${big(t.tokens_out)}`.padEnd(16)} ${winPct(t, t.five_hour_pct).padStart(9)} ${winPct(t, t.seven_day_pct).padStart(6)}   ${t.window_source}`);
   const p = u.per_point;
   return [
     "Plan usage: how much of your Claude plan's limits the workflow used, per ticket and per story point",

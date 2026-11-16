@@ -159,7 +159,16 @@ any step or gate. Jira stays the source of truth, code still decides pass or fai
   `/help` lists them. The commands are skills (`.claude/skills/{why,grill,tutor}`), so they also work in Claude Code.
   Paperclip treats a question set as history once a person comments after it, so after a comment the runner
   withdraws the old set and asks again; answers given on an older set still count. Only people's comments are read
-  as commands, never the agent's own. An escalated unit, a failed step, and opening the PR each become a
+  as commands, never the agent's own, nor the workflow's comments posted as the board (they start with the hidden
+  marker `<!-- ai-sdlc -->`). A /tutor session ends once its question is answered.
+- **Usage and cost** (#paperclip-usage): after every step and command, the runner posts the ticket's new agent-run
+  costs to Paperclip's cost ledger (`POST /companies/:id/cost-events`, one per model per run, idempotent), so the
+  issue's cost summary and Paperclip's Costs pages show them. Runs on a subscription (they reported a plan window)
+  are `subscription_included` with the API-equivalent cost as an estimate. When the PR opens, a usage summary goes
+  on the issue: story points, cost and cost per point, tokens, and the plan's 5-hour window (runs under 1% each are
+  reported as such, with the window's movement across the ticket as an upper bound). `ai-sdlc paperclip-usage T
+[--summary]` posts the same for tickets run before this, or from the CLI. Paperclip can also show the plan's own
+  quota windows if a person connects the subscription under AI connections. An escalated unit, a failed step, and opening the PR each become a
   `request_board_approval` on the issue, which is then `blocked`. Approving wakes the runner: for the PR it runs `pr`
   (one approval, one PR), otherwise it re-checks and continues. Rejecting parks the issue in `backlog` with the note.
   An open PR moves the issue to `in_review`; approving and merging the PR itself stays on GitHub.
