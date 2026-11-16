@@ -41,6 +41,24 @@ export function ensureBranch(root: string, branch: string): void {
 }
 
 /**
+ * Put the working copy on a ticket's branch for an unattended run (Paperclip): check it out if it exists, else cut it
+ * from `<remote>/<base>` (fetched first) and record `base` as its PR base. Cutting from whatever happened to be checked
+ * out would stack each queued ticket on the one before it. Refuses to leave uncommitted changes to tracked files.
+ */
+export function useTicketBranch(root: string, branch: string, o: { remote: string; base?: string }): void {
+  const current = currentBranch(root);
+  if (current === branch) return;
+  if (git(root, "status --porcelain --untracked-files=no").stdout.trim()) {
+    throw new Error(`the working copy has uncommitted changes on ${current}; commit or stash them, then approve to retry`);
+  }
+  if (git(root, `rev-parse --verify --quiet ${q(`refs/heads/${branch}`)}`).code === 0) { must(root, `checkout ${q(branch)}`); return; }
+  const base = o.base ?? (git(root, `symbolic-ref --short ${q(`refs/remotes/${o.remote}/HEAD`)}`).stdout.trim().replace(`${o.remote}/`, "") || "main");
+  must(root, `fetch ${q(o.remote)} ${q(base)}`);
+  must(root, `checkout --no-track -b ${q(branch)} ${q(`${o.remote}/${base}`)}`);
+  git(root, `config ${q(`branch.${branch}.ai-sdlc-base`)} ${q(base)}`);
+}
+
+/**
  * The branch a ticket branch should merge into: the one recorded when it was created, else the closest
  * local branch whose tip is an ancestor of it (the most recent one), else "main".
  */

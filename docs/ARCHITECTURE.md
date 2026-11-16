@@ -127,14 +127,23 @@ a runner, so it starts nothing. `PAPERCLIP_BOARD_KEY` when the instance requires
 Paperclip (self-hosted agent control plane) is the dashboard and scheduler around the workflow; it does not replace
 any step or gate. Jira stays the source of truth, code still decides pass or fail, and a person still approves.
 
-- **Sync**: `ai-sdlc paperclip-sync [--project KEY] [--dry-run]` (a person or a cron job) creates one Paperclip issue
-  per Jira ticket in `jira.readyStatus`, titled `KEY: summary` and assigned to the repository's runner agent. Settings:
-  `paperclip.url`, `.companyId`, `.agentId`, `.project` (`PAPERCLIP_URL`, `PAPERCLIP_COMPANY_ID`,
+- **Sync**: `ai-sdlc paperclip-sync [--project KEY] [--dry-run]` creates one Paperclip issue per Jira ticket in
+  `jira.readyStatus`, titled `KEY: summary`, in the repository's Paperclip project. It lands unassigned in the
+  backlog: a person starts a ticket by assigning its issue to the runner agent (`paperclip.autoStart: true` assigns
+  every new one at once instead). Tickets already in Paperclip are skipped, so it is safe on a schedule. Settings:
+  `paperclip.url`, `.companyId`, `.agentId`, `.project`, `.projectId` (`PAPERCLIP_URL`, `PAPERCLIP_COMPANY_ID`,
   `PAPERCLIP_RUNNER_AGENT_ID`, `JIRA_PROJECT`); `PAPERCLIP_BOARD_KEY` when the instance requires authentication.
+- **Schedule**: run the sync every few minutes from the repository, in a shell that has the Jira variables. cron
+  (a server): `*/5 * * * * cd <repo> && zsh -ic 'node tools/ai-sdlc/bin/ai-sdlc.mjs paperclip-sync' >> <log> 2>&1`.
+  macOS: a launchd agent in `~/Library/LaunchAgents` with `StartInterval` 300 running the same command
+  (`launchctl bootstrap gui/$(id -u) <plist>`; `launchctl bootout` removes it). Paperclip itself must be running.
 - **Runner**: one Paperclip agent per repository with the `process` adapter, command `node`, args
   `["<repo>/tools/ai-sdlc/bin/ai-sdlc.mjs", "paperclip-run"]`, `cwd` the repository. Each run acts only on the issue
   that woke it (`orchestrator/paperclip.ts`): it runs `extract`, `plan` and `run` (build and QA) as needed, comments
-  each step's exit code and output, and stops when a person is needed.
+  each step's exit code and output, and stops when a person is needed. Tickets share the repository's checkout, so each
+  run first switches to its ticket's branch; a new ticket's branch is cut from `<pr.remote>/<pr.base>` (fetched; default
+  the remote's default branch), never from whatever is checked out, so queued tickets do not stack. Uncommitted changes
+  to tracked files stop the run with a note on the issue.
 - **People**: open IR questions become a Paperclip question set on the issue (`ask_user_questions`, one free-text
   answer per question); answering it wakes the runner, which writes the answers into the IR, commits them and goes on
   to plan and build. An escalated unit, a failed step, and opening the PR each become a

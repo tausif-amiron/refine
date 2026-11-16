@@ -27,7 +27,7 @@ export interface PaperclipApi {
   approvals(issueId: string): Promise<Approval[]>;
   requestApproval(issueId: string, payload: Approval["payload"], companyId: string, agentId: string): Promise<void>;
   listIssues(companyId: string): Promise<{ id: string; title: string }[]>;
-  createIssue(o: { companyId: string; title: string; description: string; assigneeAgentId: string }): Promise<{ id: string; identifier?: string }>;
+  createIssue(o: { companyId: string; title: string; description: string; assigneeAgentId?: string; projectId?: string; status?: string }): Promise<{ id: string; identifier?: string }>;
   interactions(issueId: string): Promise<Interaction[]>;
   askQuestions(issueId: string, title: string, questions: { id: string; prompt: string; helpText?: string }[]): Promise<void>;
 }
@@ -107,7 +107,9 @@ const stepComment = (step: Step, ticket: string, r: { code: number; output: stri
 /** Exit codes that are outcomes, not failures: extract 3 = the IR has questions for a person. */
 const stepOk = (step: Step, code: number) => code === 0 || (step === "extract" && code === 3);
 
-export async function paperclipRun(o: { root: string; api: PaperclipApi; runStep: StepRunner; runId: string; agentId: string; companyId: string; maxSteps?: number; commit?: (message: string) => void; isMerged?: (url: string) => Promise<boolean | undefined> }): Promise<string> {
+export async function paperclipRun(o: { root: string; api: PaperclipApi; runStep: StepRunner; runId: string; agentId: string; companyId: string; maxSteps?: number; commit?: (message: string) => void; isMerged?: (url: string) => Promise<boolean | undefined>;
+  /** Put the working copy on the ticket's branch (several tickets share one checkout); throws when it cannot. */
+  useBranch?: (ticket: string) => void }): Promise<string> {
   const { api } = o;
   const ctx = (await api.getRun(o.runId)).contextSnapshot ?? {};
   if (!ctx.issueId) return "no issue in this run's context; nothing to do";
@@ -139,6 +141,11 @@ export async function paperclipRun(o: { root: string; api: PaperclipApi; runStep
     await api.setStatus(issue.id, "blocked");
     return `waiting for a person (${action})`;
   };
+
+  // Everything below reads the ticket's files, so the checkout must be on its branch first.
+  try { o.useBranch?.(ticket); } catch (e) {
+    return waitFor("failure", `Could not switch to ${ticket}'s branch: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}`);
+  }
 
   for (let i = 0; i < (o.maxSteps ?? 6); i++) {
     const next = nextAction(o.root, ticket);
@@ -206,10 +213,14 @@ export async function githubMerged(url: string, fetchImpl: typeof fetch = fetch)
   return typeof j.merged === "boolean" ? j.merged : undefined;
 }
 
-/** Mirror ready Jira tickets into Paperclip issues assigned to the runner (one per ticket; titles start with the key). */
+/**
+ * Mirror ready Jira tickets into Paperclip issues (one per ticket; titles start with the key). By default an issue lands
+ * unassigned in the backlog of the repo's project and a person starts it by assigning it to the runner; `autoStart`
+ * assigns it at once. Safe to run on a schedule: tickets already in Paperclip are skipped.
+ */
 export async function paperclipSync(o: {
   api: PaperclipApi; jira: { search(jql: string): Promise<{ key: string; summary: string }[]> };
-  project: string; readyStatus: string; companyId: string; agentId: string; jiraUrl?: string; dryRun?: boolean;
+  project: string; readyStatus: string; companyId: string; agentId: string; projectId?: string; autoStart?: boolean; jiraUrl?: string; dryRun?: boolean;
 }): Promise<{ created: string[]; existing: string[] }> {
   const tickets = await o.jira.search(`project = ${o.project} AND status = "${o.readyStatus}" ORDER BY created ASC`);
   const have = new Set((await o.api.listIssues(o.companyId)).map((i) => i.title.match(/^([A-Z][A-Z0-9]+-\d+)\b/)?.[1]).filter(Boolean));
@@ -219,8 +230,9 @@ export async function paperclipSync(o: {
     if (have.has(t.key)) { existing.push(t.key); continue; }
     created.push(t.key);
     if (!o.dryRun) await o.api.createIssue({
-      companyId: o.companyId, assigneeAgentId: o.agentId, title: `${t.key}: ${t.summary}`,
-      description: `Mirror of Jira ${t.key}${o.jiraUrl ? ` (${o.jiraUrl}/browse/${t.key})` : ""}. Jira is the source of truth; ai-sdlc runs it and reports here.`,
+      companyId: o.companyId, title: `${t.key}: ${t.summary}`, projectId: o.projectId,
+      ...(o.autoStart ? { assigneeAgentId: o.agentId, status: "todo" } : { status: "backlog" }),
+      description: `Mirror of Jira ${t.key}${o.jiraUrl ? ` (${o.jiraUrl}/browse/${t.key})` : ""}. Jira is the source of truth; ai-sdlc runs it and reports here.${o.autoStart ? "" : " To start it, assign this issue to the repository's AI-SDLC agent."}`,
     });
   }
   return { created, existing };
@@ -263,8 +275,11 @@ export class HttpPaperclip implements PaperclipApi {
       },
     });
   }
-  createIssue(o: { companyId: string; title: string; description: string; assigneeAgentId: string }) {
-    return this.call<{ id: string; identifier?: string }>("POST", `/companies/${o.companyId}/issues`, { title: o.title, description: o.description, assigneeAgentId: o.assigneeAgentId, status: "todo" });
+  createIssue(o: { companyId: string; title: string; description: string; assigneeAgentId?: string; projectId?: string; status?: string }) {
+    return this.call<{ id: string; identifier?: string }>("POST", `/companies/${o.companyId}/issues`, {
+      title: o.title, description: o.description, status: o.status ?? "todo",
+      ...(o.assigneeAgentId ? { assigneeAgentId: o.assigneeAgentId } : {}), ...(o.projectId ? { projectId: o.projectId } : {}),
+    });
   }
 }
 
