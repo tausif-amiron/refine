@@ -137,8 +137,10 @@ shows each of these on a small ticket, including a deliberately failing unit tha
    CI drift check) and write (ops, ticket moves in `release.yml`).
 4. **GitHub**: each developer installs the `gh` CLI and runs `gh auth login` (`pr` pushes and opens the pull
    request with it; `review` and `learn` use it too). For CI: secrets `ANTHROPIC_API_KEY`, `REVIEW_BASE_URL`,
-   `REVIEW_API_KEY`, `JIRA_*`; variables `REVIEW_MODEL`, `DEPLOY_COMMAND`, `ROLLBACK_COMMAND`, `HEALTH_URL`, `OPS_*`. Fill in `.github/CODEOWNERS`,
-   then `scripts/branch-protection.sh apply` and `verify`.
+   `REVIEW_API_KEY`, `JIRA_*`; variables `REVIEW_MODEL`, `DEPLOY_COMMAND`, `ROLLBACK_COMMAND`, `HEALTH_URL`,
+   `OPS_*`. Fill in `.github/CODEOWNERS`, then `scripts/branch-protection.sh apply` and `verify`. `apply` also sets
+   the repo to merge commits only and to delete branches on merge (see docs/CONVENTIONS.md#merging); branch
+   protection itself needs a public repo or a paid GitHub plan.
 5. **Telemetry**: set `OTEL_EXPORTER_OTLP_ENDPOINT` to send events to your store; the JSONL file sink is always on.
 6. **Alerts**: relay your alerting webhook to `repository_dispatch` (type `alert`). Alertmanager payloads are understood.
 7. **Check it**: each developer runs `ai-sdlc doctor --project <JIRA KEY>` in the repo before the first ticket. It checks

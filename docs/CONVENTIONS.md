@@ -18,6 +18,33 @@ becomes a line here (the learning loop, `npm run learn`). Keep each rule one lin
 - Fix branches from ops tickets: `fix/<TICKET>`.
 - Nobody pushes to `main`. `main` changes only through an approved PR (branch protection).
 
+## Merging
+
+**Merging a PR into `main`.** A person merges, after approving, with GitHub's **"Create a merge commit"**. The
+"Squash and merge" and "Rebase and merge" buttons are turned off (`scripts/branch-protection.sh apply` sets the repo
+to merge commits only and to delete the head branch on merge).
+
+Why: the unit commits and their `Ticket:`, `Unit:` and `Run:` trailers are how an agent investigating a production
+problem gets from `git blame` to the unit, its brief, its run's telemetry and the ticket. The release step finds
+shipped tickets from the `Ticket:` trailers, and the ops agent reads recent merge commits as deploy history. Squash
+collapses the unit commits into one and can drop the trailers; both squash and rebase-merge leave no merge commit.
+
+**Updating a branch with `main`** (to pick up changes or resolve conflicts before merging). This is not merging a
+PR, and either way is fine:
+
+- Merge `main` into the branch: GitHub's "Update branch" button, or `git merge origin/main`. Preferred: no
+  force-push, PR comments stay attached, conflicts are resolved once.
+- Or rebase the branch onto `main`. On a ticket branch use `git rebase --rebase-merges origin/main`, because a plain
+  rebase drops the `merge(unit-…)` commits that join each unit into the ticket. Push with `--force-with-lease`, and
+  only on a branch nobody else is working on.
+
+**Stacked PRs** (a PR whose base is another PR's branch). Re-target the upper PR to `main` _before_ merging the lower
+one: merging deletes the lower branch, and GitHub closes any PR whose base branch is deleted. Then merge each with a
+merge commit, lower first.
+
+**Reading history.** `git log --first-parent main` shows one line per merged PR; `git bisect --first-parent`
+searches PR by PR before you look at the commits inside one.
+
 ## Commits
 
 - Conventional commits: `<type>(<scope>): <summary>` with type in
