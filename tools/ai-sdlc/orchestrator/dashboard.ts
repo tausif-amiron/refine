@@ -3,6 +3,7 @@
 // progress lines from the build and QA as they happen, and when the ticket is waiting for a person (then the issue is
 // blocked on the board). It only reports: Jira stays the source of truth and code still decides pass or fail.
 // Reporting never breaks a run; a failure is one warning.
+import { WORKFLOW_MARK } from "./paperclip.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Config } from "./config.ts";
@@ -86,7 +87,7 @@ export function dashboardFor(root: string, cfg: Config, api?: DashboardApi, warn
     if (!on) return;
     await safely(async () => {
       const id = await issueId(ticket);
-      await client!.comment(id, state === "progress" ? `**${STAGE_NAME[s]}**: ${text}` : `**${STAGE_NAME[s]}** ${STATE_WORD[state]}: ${text}`);
+      await client!.comment(id, `${WORKFLOW_MARK}\n` + (state === "progress" ? `**${STAGE_NAME[s]}**: ${text}` : `**${STAGE_NAME[s]}** ${STATE_WORD[state]}: ${text}`));
       // Inside a Paperclip run the runner agent owns the issue and its status (paperclip-run): only comment, or a
       // status or owner change would take the issue from the agent.
       if (state === "progress" || process.env.PAPERCLIP_RUN_ID) return;

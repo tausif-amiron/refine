@@ -8,6 +8,8 @@ import { withGateway } from "./gateway.ts";
 import { dashboardFor, type Stage } from "./dashboard.ts";
 import { cliStepRunner, HttpPaperclip, paperclipRun, paperclipSync } from "./paperclip.ts";
 import { adviceCommand, adviseTicket } from "./advise.ts";
+import { reportUsage as reportTicketUsage } from "./usage.ts";
+import { telemetryFile } from "./telemetry.ts";
 import { cliHint, loadConfig, repoRoot } from "./config.ts";
 import { extractTicket } from "./extract.ts";
 import { commitAll, ensureBranch, ticketBranch, headCommit, useTicketBranch } from "./git.ts";
@@ -81,7 +83,20 @@ async function main() {
       const api = new HttpPaperclip(e.PAPERCLIP_API_URL, e.PAPERCLIP_API_KEY, e.PAPERCLIP_RUN_ID);
       const useBranch = (t: string) => useTicketBranch(root, ticketBranch(cfg.branchPrefix, t), { remote: cfg.pr?.remote ?? "origin", base: cfg.pr?.base });
       const runCommand = (t: string, command: Parameters<typeof adviceCommand>[0]["command"], text: string) => adviceCommand({ root, cfg, ticket: t, runner, command, reply: command ? undefined : text });
-      out(await paperclipRun({ root, api, runStep: cliStepRunner(root), useBranch, runCommand, runId: e.PAPERCLIP_RUN_ID, agentId: e.PAPERCLIP_AGENT_ID, companyId: e.PAPERCLIP_COMPANY_ID }));
+      const reportUsage = (t: string, issueId: string, summary: boolean) => reportTicketUsage({ root, api, companyId: e.PAPERCLIP_COMPANY_ID!, agentId: e.PAPERCLIP_AGENT_ID!, issueId, ticket: t, heartbeatRunId: e.PAPERCLIP_RUN_ID, summary, telemetryPath: telemetryFile(root, cfg.telemetry.file) });
+      out(await paperclipRun({ root, api, runStep: cliStepRunner(root), useBranch, runCommand, reportUsage, runId: e.PAPERCLIP_RUN_ID, agentId: e.PAPERCLIP_AGENT_ID, companyId: e.PAPERCLIP_COMPANY_ID }));
+      return;
+    }
+    case "paperclip-usage": {
+      // Post a ticket's agent-run costs to its Paperclip issue (and, with --summary, the usage comment): for runs
+      // made before usage was reported, or outside Paperclip. Safe to repeat.
+      const t = needTicket();
+      const pc = cfg.paperclip;
+      const rec = join(root, ".ai-sdlc", "tickets", `${t}.paperclip.json`);
+      if (!pc?.url || !pc.companyId || !pc.agentId || !existsSync(rec)) throw new Error(`paperclip-usage needs paperclip.url, companyId, agentId and the ticket's issue (.ai-sdlc/tickets/${t}.paperclip.json).`);
+      const issueId = (JSON.parse(readFileSync(rec, "utf8")) as { issueId: string }).issueId;
+      const r = await reportTicketUsage({ root, api: new HttpPaperclip(pc.url, process.env.PAPERCLIP_BOARD_KEY), companyId: pc.companyId, agentId: pc.agentId, issueId, ticket: t, summary: Boolean(flags.summary), telemetryPath: telemetryFile(root, cfg.telemetry.file) });
+      out(`Posted ${r.posted} cost event(s) to the issue${r.summary ? ", and the usage summary" : ""}.`);
       return;
     }
     case "paperclip-sync": {
@@ -262,7 +277,7 @@ async function main() {
       return;
     }
     default:
-      out("commands: doctor | gates | paperclip-sync | paperclip-run | extract | suggest | plan | run | qa | score-probe | score-finalize | pr | review | release | ops-alert | ops-verify | learn");
+      out("commands: doctor | gates | paperclip-sync | paperclip-run | paperclip-usage | extract | suggest | plan | run | qa | score-probe | score-finalize | pr | review | release | ops-alert | ops-verify | learn");
       process.exitCode = cmd ? 1 : 0;
   }
 }

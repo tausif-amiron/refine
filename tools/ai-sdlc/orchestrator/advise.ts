@@ -164,6 +164,8 @@ export async function adviceCommand(o: { root: string; cfg: Config; ticket: stri
   const cmd = o.command;
   if (!cmd) {
     if (!session || session.ended || !o.reply?.trim()) return undefined;
+    // A session is about one open decision: once it is answered, the session is over (AIS-11).
+    if (!openIrQuestions(o.root, o.ticket).some((q) => q.id === session.question)) { saveSession({ ...session, ended: true }); return undefined; }
     return turn(session, o.reply.trim());
   }
   if (cmd.name === "help") return { reply: HELP };
