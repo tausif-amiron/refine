@@ -14,12 +14,18 @@ import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { WORKFLOW_ROOT } from "./config.ts";
 import { commitAll } from "./git.ts";
+import { openIrQuestions, parseCommand, readAdvice, type Command } from "./advise.ts";
 import { stableStringify } from "./util.ts";
 
-export type Step = "extract" | "plan" | "run" | "pr";
+export type Step = "extract" | "suggest" | "plan" | "run" | "pr";
+export interface QuestionOption { id: string; label: string; description?: string }
+export interface AskedQuestion { id: string; prompt: string; helpText?: string; options?: QuestionOption[] }
+export interface IssueComment { id: string; body: string; createdAt: string; authorUserId?: string | null; authorAgentId?: string | null }
+/** Run a developer's /command (or a tutor reply) from a comment; undefined when the comment is not for the workflow. */
+export type CommandRunner = (ticket: string, command: Command | undefined, text: string) => Promise<{ reply: string } | undefined>;
 export interface Approval { id: string; status: string; decidedAt?: string; decisionNote?: string; payload: { action: string; ticket: string; title: string } }
 export interface PaperclipApi {
-  getRun(id: string): Promise<{ contextSnapshot?: { issueId?: string; wakeReason?: string } }>;
+  getRun(id: string): Promise<{ contextSnapshot?: { issueId?: string; wakeReason?: string; wakeCommentId?: string } }>;
   getIssue(id: string): Promise<{ id: string; identifier?: string; title: string; status: string }>;
   checkout(issueId: string, agentId: string): Promise<void>;
   comment(issueId: string, body: string): Promise<void>;
@@ -29,11 +35,14 @@ export interface PaperclipApi {
   listIssues(companyId: string): Promise<{ id: string; title: string }[]>;
   createIssue(o: { companyId: string; title: string; description: string; assigneeAgentId?: string; projectId?: string; status?: string }): Promise<{ id: string; identifier?: string }>;
   interactions(issueId: string): Promise<Interaction[]>;
-  askQuestions(issueId: string, title: string, questions: { id: string; prompt: string; helpText?: string }[]): Promise<void>;
+  askQuestions(issueId: string, title: string, questions: AskedQuestion[]): Promise<void>;
+  listComments(issueId: string): Promise<IssueComment[]>;
+  getComment(issueId: string, commentId: string): Promise<IssueComment>;
+  withdraw(issueId: string, interactionId: string, reason: string): Promise<void>;
 }
 export type StepRunner = (step: Step, ticket: string) => Promise<{ code: number; output: string }>;
 export interface Interaction {
-  id: string; kind: string; status: string;
+  id: string; kind: string; status: string; createdAt?: string;
   payload?: { questions?: { id: string; prompt: string }[] };
   result?: { version: 1; answers: { questionId: string; optionIds: string[]; otherText?: string | null }[]; outcome?: string; reason?: string | null; cancelled?: true };
 }
@@ -50,23 +59,40 @@ export function stepEnv(step: Step, vars: NodeJS.ProcessEnv): NodeJS.ProcessEnv 
   return out;
 }
 
-/** The open IR questions, with stable ids (Q-<n> by position in ir.questions). */
-function openQuestions(root: string, ticket: string): { id: string; prompt: string; helpText?: string }[] {
-  const ir = readJson<{ questions: { q: string; affects?: string; if_wrong?: string; answer?: string }[] }>(join(root, "ir", `${ticket}.ir.json`));
-  return (ir?.questions ?? [])
-    .map((q, i) => ({ id: `Q-${i + 1}`, prompt: q.q, helpText: [q.affects && `Affects: ${q.affects}`, q.if_wrong && `If answered wrongly: ${q.if_wrong}`].filter(Boolean).join("\n") || undefined, open: !q.answer }))
-    .filter((q) => q.open)
-    .map(({ open: _open, ...q }) => q);
+const OWN_ANSWER: QuestionOption = { id: "answer", label: "Your own answer" };
+const clip = (t: string, n: number) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
+
+/** The open IR questions (ids Q-<n>), each with the advisor's options (recommended first) and a free-text answer. */
+function openQuestions(root: string, ticket: string): AskedQuestion[] {
+  const advice = readAdvice(root, ticket);
+  return openIrQuestions(root, ticket).map((q) => {
+    const a = advice?.questions.find((x) => x.question === q.id);
+    const order = a ? [a.recommended, ...a.options.map((_, i) => i).filter((i) => i !== a.recommended)] : [];
+    const options: QuestionOption[] = order.map((i) => {
+      const o = a!.options[i];
+      return {
+        id: `opt-${i}`,
+        label: clip(`${o.answer}${i === a!.recommended ? " (Recommended)" : ""}`, 1000),
+        description: clip([`Why: ${o.why}`, `Evidence: ${o.evidence.join(", ")}`, `If wrong: ${o.if_wrong}`, `Confidence: ${o.confidence}`].join("\n"), 4000),
+      };
+    });
+    const help = [q.affects && `Affects: ${q.affects}`, q.if_wrong && `If answered wrongly: ${q.if_wrong}`,
+      `Question it before you pick: comment \`/why ${q.id}\`, \`/grill ${q.id}\` or \`/tutor ${q.id}\` (\`/help\` lists them).`].filter(Boolean).join("\n");
+    return { id: q.id, prompt: q.q, helpText: help, options: [...options, OWN_ANSWER] };
+  });
 }
 
-/** Write answers into the IR (by Q-<n>). Returns how many were applied. */
+/** Write answers into the IR (by Q-<n>): a picked option's answer, plus the developer's note; or their own text. */
 function applyAnswers(root: string, ticket: string, answers: { questionId: string; optionIds: string[]; otherText?: string | null }[]): number {
   const path = join(root, "ir", `${ticket}.ir.json`);
   const ir = JSON.parse(readFileSync(path, "utf8")) as { questions: { answer?: string }[] };
+  const advice = readAdvice(root, ticket);
   let n = 0;
   for (const a of answers) {
     const i = Number(a.questionId.replace(/^Q-/, "")) - 1;
-    const text = (a.otherText ?? "").trim();
+    const note = (a.otherText ?? "").trim();
+    const picked = a.optionIds.map((id) => id.match(/^opt-(\d+)$/)?.[1]).filter(Boolean).map((k) => advice?.questions.find((q) => q.question === a.questionId)?.options[Number(k)]?.answer).filter(Boolean) as string[];
+    const text = picked.length ? `${picked.join("; ")}${note ? `. Note: ${note}` : ""}` : note;
     if (ir.questions[i] && !ir.questions[i].answer && text) { ir.questions[i].answer = text; n++; }
   }
   writeFileSync(path, stableStringify(ir));
@@ -108,17 +134,20 @@ const stepComment = (step: Step, ticket: string, r: { code: number; output: stri
 const stepOk = (step: Step, code: number) => code === 0 || (step === "extract" && code === 3);
 
 export async function paperclipRun(o: { root: string; api: PaperclipApi; runStep: StepRunner; runId: string; agentId: string; companyId: string; maxSteps?: number; commit?: (message: string) => void; isMerged?: (url: string) => Promise<boolean | undefined>;
+  /** Answer a developer's /command typed as a comment (orchestrator/advise.ts). */
+  runCommand?: CommandRunner;
   /** Put the working copy on the ticket's branch (several tickets share one checkout); throws when it cannot. */
   useBranch?: (ticket: string) => void }): Promise<string> {
   const { api } = o;
   const ctx = (await api.getRun(o.runId)).contextSnapshot ?? {};
   if (!ctx.issueId) return "no issue in this run's context; nothing to do";
   const issue = await api.getIssue(ctx.issueId);
-  const ticket = issue.title.match(/^([A-Z][A-Z0-9]+-\d+)\b/)?.[1];
-  if (!ticket) {
+  const key = issue.title.match(/^([A-Z][A-Z0-9]+-\d+)\b/)?.[1];
+  if (!key) {
     await api.comment(issue.id, "No ticket key at the start of the title (e.g. `AIT-1: ...`), so ai-sdlc has nothing to run for this issue.");
     return "no ticket key";
   }
+  const ticket: string = key;
   await api.checkout(issue.id, o.agentId);
 
   const approvals = await api.approvals(issue.id);
@@ -147,6 +176,27 @@ export async function paperclipRun(o: { root: string; api: PaperclipApi; runStep
     return waitFor("failure", `Could not switch to ${ticket}'s branch: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}`);
   }
 
+  let suggestTried = false;
+  try {
+    // Woken by a person's comment: a /command (or a reply in a /tutor session) gets its answer on the issue.
+    if (ctx.wakeCommentId && o.runCommand) {
+      const c = await api.getComment(issue.id, ctx.wakeCommentId).catch(() => undefined);
+      if (c && c.authorUserId && !c.authorAgentId) {
+        const r = await o.runCommand(ticket, parseCommand(c.body), c.body);
+        if (r) await api.comment(issue.id, r.reply);
+      }
+    }
+    return await moveForward();
+  } catch (e) {
+    // A crashed run leaves the issue locked in Paperclip's execution recovery (RT-1: no wake, retry or comment
+    // restarted it). Report the error and wait for a person instead; if even that fails, fail loudly.
+    const msg = (e instanceof Error ? e.message : String(e)).split("\n")[0].slice(0, 300);
+    try {
+      return await waitFor("failure", `The run stopped on an error: ${msg}. A developer looks at it, then approves to retry.`);
+    } catch { throw e; }
+  }
+
+  async function moveForward(): Promise<string> {
   for (let i = 0; i < (o.maxSteps ?? 6); i++) {
     const next = nextAction(o.root, ticket);
     if (next.kind === "review") {
@@ -167,13 +217,23 @@ export async function paperclipRun(o: { root: string; api: PaperclipApi; runStep
       return waitFor("merge", `Review and merge ${next.url} on GitHub (a person approves the PR itself), then approve here to close this issue.`);
     }
     if (next.kind === "person" && next.action === "answers") {
-      const open = openQuestions(o.root, ticket);
+      let open = openQuestions(o.root, ticket);
       if (open.length) {
         const asked = (await api.interactions(issue.id)).filter((i) => i.kind === "ask_user_questions");
         const same = (i: Interaction) => JSON.stringify((i.payload?.questions ?? []).map((q) => q.prompt)) === JSON.stringify(open.map((q) => q.prompt));
-        const latest = [...asked].reverse().find(same);
-        if (latest?.result) {
-          const r = latest.result;
+        const mine = asked.filter(same);
+        // Recommended answers first (once, before the questions are first asked); without them, ask anyway.
+        if (!mine.length && !readAdvice(o.root, ticket) && !suggestTried) {
+          suggestTried = true;
+          await api.setStatus(issue.id, "in_progress");
+          const r = await o.runStep("suggest", ticket);
+          await api.comment(issue.id, stepComment("suggest", ticket, r));
+          open = openQuestions(o.root, ticket);
+          continue;
+        }
+        const answered = [...mine].filter((i) => i.result).sort((a, b) => ((a.createdAt ?? "") < (b.createdAt ?? "") ? 1 : -1))[0];
+        if (answered?.result) {
+          const r = answered.result;
           if (r.cancelled || r.outcome || !r.answers.length) {
             await api.comment(issue.id, `The questions were ${r.outcome ?? "cancelled"}${r.reason ? `: ${r.reason}` : ""}. Parked in the backlog; reassign the issue to resume.`);
             await api.setStatus(issue.id, "backlog");
@@ -184,9 +244,16 @@ export async function paperclipRun(o: { root: string; api: PaperclipApi; runStep
           await api.comment(issue.id, `Recorded ${n} answer(s) from Paperclip in ir/${ticket}.ir.json.`);
           continue;
         }
-        if (!latest) {
+        // Paperclip treats a set as history once a person comments after it: it no longer holds the issue. Withdraw
+        // such sets and ask again, so the questions stay open and the issue waits for them.
+        const comments = await api.listComments(issue.id).catch(() => [] as IssueComment[]);
+        const lastPerson = comments.filter((c) => c.authorUserId && !c.authorAgentId).map((c) => c.createdAt).sort().at(-1);
+        const pending = mine.filter((i) => i.status === "pending");
+        const active = pending.find((i) => !lastPerson || (i.createdAt ?? "") > lastPerson);
+        if (!active) {
+          for (const i of pending) await api.withdraw(issue.id, i.id, "Asked again after a comment.").catch(() => undefined);
           await api.askQuestions(issue.id, `${ticket}: questions before the build`, open);
-          await api.comment(issue.id, `Waiting for a person: answer the ${open.length} question(s) in the Questions panel of this issue. The build starts when they are answered.`);
+          if (!mine.length) await api.comment(issue.id, `Waiting for a person: answer the ${open.length} question(s) in the Questions panel of this issue. Each has a recommended answer; question it first with \`/why Q-n\`, \`/grill Q-n\` or \`/tutor Q-n\` as a comment (\`/help\`). The build starts when they are answered.`);
         }
         await api.setStatus(issue.id, "blocked");
         return "waiting for answers";
@@ -201,6 +268,7 @@ export async function paperclipRun(o: { root: string; api: PaperclipApi; runStep
     if (!stepOk(step, r.code)) return waitFor("failure", `\`ai-sdlc ${step} ${ticket}\` failed (exit ${r.code}; output above). A developer looks at it, then approves to retry.`);
   }
   return waitFor("failure", `Stopped after ${o.maxSteps ?? 6} steps without reaching a person or a PR. A developer looks at it, then approves to retry.`);
+  }
 }
 
 /** Is this GitHub PR merged? Asks GitHub's public API (the fork is public); undefined when it cannot tell. */
@@ -266,12 +334,18 @@ export class HttpPaperclip implements PaperclipApi {
     const r = await this.call<Interaction[] | { interactions: Interaction[] }>("GET", `/issues/${issueId}/interactions`);
     return Array.isArray(r) ? r : r.interactions ?? [];
   }
-  async askQuestions(issueId: string, title: string, questions: { id: string; prompt: string; helpText?: string }[]) {
+  async listComments(issueId: string) { const r = await this.call<IssueComment[] | { comments: IssueComment[] }>("GET", `/issues/${issueId}/comments`); return Array.isArray(r) ? r : r.comments ?? []; }
+  getComment(issueId: string, commentId: string) { return this.call<IssueComment>("GET", `/issues/${issueId}/comments/${commentId}`); }
+  async withdraw(issueId: string, interactionId: string, reason: string) { await this.call("POST", `/issues/${issueId}/interactions/${interactionId}/withdraw`, { reason }); }
+  async askQuestions(issueId: string, title: string, questions: AskedQuestion[]) {
     await this.call("POST", `/issues/${issueId}/interactions`, {
       kind: "ask_user_questions", continuationPolicy: "wake_assignee", title,
       payload: {
         version: 1, title, submitLabel: "Send answers",
-        questions: questions.map((q) => ({ id: q.id, prompt: q.prompt, ...(q.helpText ? { helpText: q.helpText } : {}), selectionMode: "single", required: true, options: [{ id: "answer", label: "Your answer", freeText: true }] })),
+        questions: questions.map((q) => ({
+          id: q.id, prompt: q.prompt, ...(q.helpText ? { helpText: q.helpText } : {}), selectionMode: "single", required: true,
+          options: (q.options?.length ? q.options : [OWN_ANSWER]).map((op) => ({ id: op.id, label: op.label, ...(op.description ? { description: op.description } : {}), ...(op.id === OWN_ANSWER.id ? { freeText: true } : {}) })),
+        })),
       },
     });
   }
