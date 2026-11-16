@@ -9,8 +9,10 @@ import type { Config } from "./config.ts";
 import { writeFileEnsured } from "./util.ts";
 
 export interface DashboardApi {
+  /** The board user's id (Paperclip will not put an unassigned issue in progress). */
+  whoAmI(): Promise<string | undefined>;
   listIssues(companyId: string): Promise<{ id: string; title: string }[]>;
-  createIssue(o: { companyId: string; projectId?: string; title: string; description: string }): Promise<{ id: string }>;
+  createIssue(o: { companyId: string; projectId?: string; title: string; description: string; assigneeUserId?: string }): Promise<{ id: string }>;
   comment(id: string, body: string): Promise<void>;
   update(id: string, patch: Record<string, unknown>): Promise<void>;
 }
@@ -32,9 +34,10 @@ export class HttpDashboardApi implements DashboardApi {
     if (!res.ok) throw new Error(`Paperclip ${method} ${path} → HTTP ${res.status}: ${text.slice(0, 200)}`);
     return (text ? JSON.parse(text) : undefined) as T;
   }
+  async whoAmI() { const r = await this.call<{ user?: { id?: string } }>("GET", "/auth/get-session").catch(() => undefined); return r?.user?.id; }
   async listIssues(companyId: string) { const r = await this.call<{ id: string; title: string }[] | { issues: { id: string; title: string }[] }>("GET", `/companies/${companyId}/issues`); return Array.isArray(r) ? r : r.issues ?? []; }
-  createIssue(o: { companyId: string; projectId?: string; title: string; description: string }) {
-    return this.call<{ id: string }>("POST", `/companies/${o.companyId}/issues`, { title: o.title, description: o.description, status: "todo", ...(o.projectId ? { projectId: o.projectId } : {}) });
+  createIssue(o: { companyId: string; projectId?: string; title: string; description: string; assigneeUserId?: string }) {
+    return this.call<{ id: string }>("POST", `/companies/${o.companyId}/issues`, { title: o.title, description: o.description, status: "todo", ...(o.projectId ? { projectId: o.projectId } : {}), ...(o.assigneeUserId ? { assigneeUserId: o.assigneeUserId } : {}) });
   }
   async comment(id: string, body: string) { await this.call("POST", `/issues/${id}/comments`, { body }); }
   async update(id: string, patch: Record<string, unknown>) { await this.call("PATCH", `/issues/${id}`, patch); }
@@ -45,6 +48,8 @@ export function dashboardFor(root: string, cfg: Config, api?: DashboardApi, warn
   const on = Boolean(pc?.url && pc.companyId && pc.report !== false);
   const client = api ?? (on ? new HttpDashboardApi(pc!.url, process.env.PAPERCLIP_BOARD_KEY) : undefined);
   const ids = new Map<string, string>();
+  let owner: Promise<string | undefined> | undefined;
+  const ownerId = () => (owner ??= client!.whoAmI().catch(() => undefined));
   let warned = false;
   let chain: Promise<void> = Promise.resolve();
   const record = (t: string) => join(root, ".ai-sdlc", "tickets", `${t}.paperclip.json`);
@@ -54,7 +59,7 @@ export function dashboardFor(root: string, cfg: Config, api?: DashboardApi, warn
     if (known) { ids.set(ticket, known); return known; }
     const existing = (await client!.listIssues(pc!.companyId)).find((i) => new RegExp(`^${ticket}(\\b|:)`).test(i.title));
     const jira = process.env.JIRA_BASE_URL ? `Jira: ${process.env.JIRA_BASE_URL.replace(/\/$/, "")}/browse/${ticket}\n\n` : "";
-    const id = existing?.id ?? (await client!.createIssue({ companyId: pc!.companyId, projectId: pc!.projectId, title: ticket, description: `${jira}Runs through the AI-SDLC workflow. Each stage is posted here as it happens; the PR carries the full evidence.` })).id;
+    const id = existing?.id ?? (await client!.createIssue({ companyId: pc!.companyId, projectId: pc!.projectId, title: ticket, assigneeUserId: await ownerId(), description: `${jira}Runs through the AI-SDLC workflow. Each stage is posted here as it happens; the PR carries the full evidence.` })).id;
     ids.set(ticket, id);
     writeFileEnsured(record(ticket), JSON.stringify({ issueId: id }, null, 2) + "\n");
     return id;
@@ -76,7 +81,8 @@ export function dashboardFor(root: string, cfg: Config, api?: DashboardApi, warn
       const patch = state === "waiting" || state === "failed"
         ? { status: "blocked", unblockDescriptor: { owner: "board", action: state === "failed" ? `Look at the failure: ${text}` : text } }
         : { status: s === "pr" && state === "passed" ? "in_review" : "in_progress" };
-      await client!.update(id, patch);
+      const who = await ownerId();
+      await client!.update(id, who ? { ...patch, assigneeUserId: who } : patch);
     });
   };
 
