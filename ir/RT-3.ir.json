@@ -1,0 +1,61 @@
+{
+  "entities": [],
+  "external_systems": [],
+  "limits": [],
+  "modules": [
+    {
+      "anchor": {
+        "quote": "packages/simple-rest/src/utils/generateFilter.ts calls filters.map(...) only for side effects (mutating queryFilters) and discards the result. Should be forEach (or for...of)."
+      },
+      "behaviours": [
+        "generateFilter no longer calls filters.map for side effects. It loops over the filters with forEach or for...of and does not build an array that it then throws away.",
+        "If the loop uses for...of, the early exit for the 'q' field must use `continue`, not `return`. Otherwise generateFilter stops at the 'q' filter and skips the filters after it.",
+        "When called with no filters (undefined), generateFilter still returns an empty object {}.",
+        "With filters [{field:'name',operator:'eq',value:'John'},{field:'age',operator:'gte',value:25}], generateFilter still returns {name:'John', age_gte:25}.",
+        "With a filter whose field is 'q', generateFilter still stores its value under the key 'q' with no operator suffix, and still processes the filters that come after it (e.g. returns {q:'searchValue', name:'John'}).",
+        "A filter with operator 'or' or 'and' still throws an Error whose message starts with '[@refinedev/simple-rest]: `operator: <op>` is not supported.' and the error message text is unchanged.",
+        "Conditional filters without a 'field' property (other than or/and) are still ignored, as before.",
+        "The exported signature `generateFilter(filters?: CrudFilters) => { [key: string]: string }` and the export name are unchanged.",
+        "All existing @refinedev/simple-rest tests pass with no changes to the expected results.",
+        "Biome lint reports no errors or warnings for packages/simple-rest/src/utils/generateFilter.ts.",
+        "No .changeset file is added for this change (internal refactor)."
+      ],
+      "files": [
+        "packages/simple-rest/src/utils/generateFilter.ts"
+      ],
+      "name": "generateFilter forEach refactor",
+      "tests": [
+        "packages/simple-rest/test/utils/generateFilter.spec.ts",
+        "packages/simple-rest/test/getList/index.spec.ts"
+      ]
+    }
+  ],
+  "questions": [],
+  "roles": [],
+  "schema": "ai-sdlc.ir.v1",
+  "screens": [],
+  "sealed_acceptance_criteria": [
+    {
+      "id": "AC-1",
+      "text": "No behaviour change."
+    },
+    {
+      "id": "AC-2",
+      "text": "Existing simple-rest tests pass."
+    },
+    {
+      "id": "AC-3",
+      "text": "Biome lint clean."
+    },
+    {
+      "id": "AC-4",
+      "text": "No changeset needed (internal refactor)."
+    }
+  ],
+  "sealed_hash": "sha256:bd03569aab9bf6ac7b63c7220904de0bbde621f21d0fc3313028aa60c8f8ded4",
+  "services": [],
+  "ticket": "RT-3",
+  "ticket_hash": "sha256:68177c5ad0d01ff0583f9219980b2e564899c7f1fb0e969fa443ac114bab8600",
+  "title": "simple-rest: use forEach instead of map for side effects in generateFilter",
+  "unplaced": []
+}
