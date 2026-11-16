@@ -47,6 +47,7 @@ function advisePrompt(ticket: string, text: string, questions: OpenQuestion[], f
     "- if_wrong: what goes wrong if this option is chosen and turns out to be wrong;",
     "- confidence: high, medium or low. Say low when the code does not settle it.",
     "Prefer the option that keeps existing behaviour and public APIs safe unless the ticket says otherwise.",
+    "Each option must stand alone: never refer to another option by number (\"same as option 0\"); the developer sees them reordered. Repeat what is shared.",
     "Return ONLY JSON in a ```json fence: {\"questions\":[{\"question\":\"Q-1\",\"options\":[{\"answer\":\"\",\"why\":\"\",\"evidence\":[\"\"],\"if_wrong\":\"\",\"confidence\":\"medium\"}],\"recommended\":0}]}",
     feedback ? `\nYour previous answer was rejected. Fix exactly these problems:\n${feedback}` : "",
   ].join("\n");
@@ -143,8 +144,13 @@ function skillText(root: string, name: string): string {
 
 function questionBlock(adv: QuestionAdvice | undefined, open: OpenQuestion): string {
   const lines = [`Question ${open.id}: ${open.q}`, open.affects ? `Affects: ${open.affects}` : "", open.if_wrong ? `If answered wrongly: ${open.if_wrong}` : ""];
-  if (adv) adv.options.forEach((o, i) => lines.push(`Option ${i + 1}${i === adv.recommended ? " (recommended)" : ""}: ${o.answer}\n  why: ${o.why}\n  evidence: ${o.evidence.join(", ")}\n  if wrong: ${o.if_wrong}\n  confidence: ${o.confidence}`));
+  // The order the developer sees in the Questions panel: recommended first.
+  if (adv) [adv.recommended, ...adv.options.map((_, i) => i).filter((i) => i !== adv.recommended)].forEach((i) => {
+    const o = adv.options[i];
+    lines.push(`${i === adv.recommended ? "Recommended" : "Alternative"}: ${o.answer}\n  why: ${o.why}\n  evidence: ${o.evidence.join(", ")}\n  if wrong: ${o.if_wrong}\n  confidence: ${o.confidence}`);
+  });
   else lines.push("(No recommendation was made for this question.)");
+  lines.push("Refer to options by their answer, never by number: the developer sees them in a different order.");
   return lines.filter(Boolean).join("\n");
 }
 
