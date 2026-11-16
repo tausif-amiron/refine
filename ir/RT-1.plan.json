@@ -1,0 +1,60 @@
+{
+  "contracts": [],
+  "ir_hash": "sha256:159a1ce1514a6a9195ebad27289b5075624bca591d996c7eb4459e2f8aa215c0",
+  "schema": "ai-sdlc.plan.v1",
+  "ticket": "RT-1",
+  "units": [
+    {
+      "agent": "dev-module",
+      "consumes": [],
+      "dependsOn": [],
+      "exposes": [],
+      "id": "unit-module-simple-rest-filter-operator-mapping",
+      "ir": {
+        "entities": [],
+        "modules": [
+          "simple-rest filter operator mapping"
+        ],
+        "screens": [],
+        "services": []
+      },
+      "kind": "module",
+      "model": "sonnet",
+      "name": "simple-rest filter operator mapping",
+      "scope": [
+        ".changeset/simple-rest-unsupported-filter-operators.md",
+        "owed.yaml",
+        "packages/simple-rest/src/utils/generateFilter.ts",
+        "packages/simple-rest/src/utils/mapOperator.ts",
+        "packages/simple-rest/test/utils/generateFilter.spec.ts",
+        "packages/simple-rest/test/utils/mapOperator.spec.ts"
+      ],
+      "slug": "simple-rest-filter-operator-mapping"
+    },
+    {
+      "agent": "qa",
+      "consumes": [],
+      "dependsOn": [
+        "unit-module-simple-rest-filter-operator-mapping"
+      ],
+      "exposes": [],
+      "id": "unit-walk",
+      "ir": {
+        "entities": [],
+        "modules": [
+          "simple-rest filter operator mapping"
+        ],
+        "screens": [],
+        "services": []
+      },
+      "kind": "walk",
+      "model": "sonnet",
+      "name": "walk",
+      "scope": [
+        "packages/simple-rest/test/walk/**",
+        "owed.yaml"
+      ],
+      "slug": "walk"
+    }
+  ]
+}

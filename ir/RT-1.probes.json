@@ -1,0 +1,27 @@
+{
+  "probes": [
+    {
+      "ask": "As a new user, check: Unsupported operators throw a descriptive error (same style as the existing or/and error in generateFilter), or are mapped correctly where json-server supports them. Record exactly what the product shows.",
+      "criterion": "AC-1",
+      "id": "P-1"
+    },
+    {
+      "ask": "As a new user, check: eq still maps to field=value. Record exactly what the product shows.",
+      "criterion": "AC-2",
+      "id": "P-2"
+    },
+    {
+      "ask": "As a new user, check: Unit tests in packages/simple-rest/test cover every CrudOperators value. Record exactly what the product shows.",
+      "criterion": "AC-3",
+      "id": "P-3"
+    },
+    {
+      "ask": "As a new user, check: Changeset added (patch). Record exactly what the product shows.",
+      "criterion": "AC-4",
+      "id": "P-4"
+    }
+  ],
+  "schema": "ai-sdlc.probes.v1",
+  "sealed_hash": "sha256:d3eede6688b34cbfc543c87547fb5be57c49c3e75f41bb00e2f6afa33b5aff41",
+  "ticket": "RT-1"
+}
