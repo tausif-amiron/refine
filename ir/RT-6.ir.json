@@ -156,31 +156,37 @@
   "questions": [
     {
       "affects": "The public Pagination type of @refinedev/core and how every data provider and UI adapter tells cursor mode from offset mode",
+      "answer": "Add \"cursor\" as a fourth value: mode?: \"client\" | \"server\" | \"off\" | \"cursor\", meaning server-side pagination by cursor. In core, every check that means 'paginate on the server' changes from mode === \"server\" to a helper such as isServerSide(mode) that returns true for both \"server\" and \"cursor\".",
       "if_wrong": "Data providers that branch on mode === \"server\" may silently stop paginating in cursor mode, or the type becomes non-additive and breaks existing users",
       "q": "Pagination.mode already has the values \"client\" | \"server\" | \"off\" (packages/core/src/contexts/data/types.ts). Should \"cursor\" be added as a fourth value, which means server-side pagination by cursor? Or should cursor be a separate option next to mode: \"server\"?"
     },
     {
       "affects": "The getList params contract that @refinedev/core sends and @refinedev/simple-rest and third-party providers read",
+      "answer": "Add an optional pagination.cursor?: string to the Pagination type. In cursor mode, core sends the current cursor there (undefined on the first page), and currentPage stays a number.",
       "if_wrong": "Providers read the cursor from the wrong field, so every page after the first returns page one again or fails",
       "q": "In cursor mode, how is the request cursor passed to getList? As a new pagination.cursor field, or as currentPage carrying the cursor value, the way useInfiniteList passes pageParam today?"
     },
     {
       "affects": "The out-of-the-box behaviour of the simple-rest getList in cursor mode, and the example app",
+      "answer": "Default the request params to cursor and limit. By default, read next and prev from the response headers x-next-cursor and x-prev-cursor. Add an optional third argument, dataProvider(apiUrl, httpClient, { cursor: { cursorParam, limitParam, getCursor(response) } }), to override both.",
       "if_wrong": "The defaults do not match common cursor APIs or the example backend, so cursor.next / cursor.prev are always empty and navigation never advances",
       "q": "What are the default query param names for cursor mode in simple-rest (for example cursor and limit)? Where does simple-rest read the next and prev cursors from in the API response: the body, the headers, or a configurable function?"
     },
     {
       "affects": "The new example app and its Cypress test",
+      "answer": "Ship a small local cursor-aware mock backend with the example (or stub responses in its Cypress spec with cy.intercept), implementing the simple-rest cursor defaults chosen for Q-3. Point the app at it.",
       "if_wrong": "The example cannot show real cursor navigation, or its e2e test depends on a server that ignores cursors",
       "q": "Which backend should the cursor example app call? The fake REST API the other examples use may not support cursor params."
     },
     {
       "affects": "Table navigation in core useTable and antd useTable when users filter or sort, and deep links to a page",
+      "answer": "In cursor mode, any change to filters, sorters or pageSize clears the cursor history and resets to the first page (cursor undefined). With syncWithLocation, write only pageSize, sorters and filters to the URL, not the cursor, so a deep link opens page one of that query.",
       "if_wrong": "Stale cursors from an earlier query are reused after a filter change and show wrong or empty pages, or a shared URL opens a different page than the user saw",
       "q": "In cursor mode, should useTable clear its cursor history and go back to the first page when filters, sorters or pageSize change? Should the current cursor sync to the URL when syncWithLocation is on?"
     },
     {
       "affects": "The useTable return values and the antd pagination display in cursor mode",
+      "answer": "In cursor mode, return total as whatever the provider returns (undefined when absent) and pageCount as undefined. Add hasNextPage and hasPreviousPage booleans from cursor.next / cursor.prev and the history. antd renders prev/next only and shows a total only when one is present.",
       "if_wrong": "The UI shows a wrong page count or total, or code that reads pageCount breaks",
       "q": "In cursor mode, what does useTable return for total and pageCount when the API returns no total? Should antd still show a total?"
     }
