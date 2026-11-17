@@ -1,6 +1,6 @@
 {
   "contracts": [],
-  "ir_hash": "sha256:7c306885ee69cd97ce917e06871a0121dab02ee942e619c39c2d07da7367cd8a",
+  "ir_hash": "sha256:72090eada1da1ae9df8bf76b92f09d8ab6f0be5b39d86024f3f5df3eb4b1af03",
   "schema": "ai-sdlc.plan.v1",
   "ticket": "RT-6",
   "units": [
@@ -9,7 +9,7 @@
       "consumes": [],
       "dependsOn": [],
       "exposes": [],
-      "fingerprint": "sha256:6be493991dc45115081c32c811534bd8fbb6946cdadea31f6b76412c6a934768",
+      "fingerprint": "sha256:38edd8a3042c46f3819a175dbad51b515176b2ea423defba1f8d6f5d1d92840a",
       "id": "unit-module-core-cursor-pagination",
       "ir": {
         "entities": [],
@@ -28,6 +28,7 @@
         "documentation/docs/data/hooks/use-table/index.md",
         "owed.yaml",
         "packages/core/src/contexts/data/types.ts",
+        "packages/core/src/definitions/helpers/handlePaginationParams/index.ts",
         "packages/core/src/hooks/data/useList.spec.tsx",
         "packages/core/src/hooks/data/useList.ts",
         "packages/core/src/hooks/useTable/index.spec.ts",
@@ -140,7 +141,7 @@
         "unit-module-table-antd-cursor-pagination-example"
       ],
       "exposes": [],
-      "fingerprint": "sha256:46d2bf414f95b0cea06768c4e10625b27f70c5edc48299ca661141b5bfd76a14",
+      "fingerprint": "sha256:b5101a73edc2e5acb000edf18544c11817a72959a5fe3dfa7925f09434d4896f",
       "id": "unit-walk",
       "ir": {
         "entities": [],

@@ -25,7 +25,8 @@
         "packages/core/src/hooks/useTable/index.ts",
         "documentation/docs/data/hooks/use-list/index.md",
         "documentation/docs/data/hooks/use-table/index.md",
-        ".changeset/core-cursor-pagination.md"
+        ".changeset/core-cursor-pagination.md",
+        "packages/core/src/definitions/helpers/handlePaginationParams/index.ts"
       ],
       "name": "core-cursor-pagination",
       "tests": [
