@@ -65,7 +65,7 @@
       "apps/web/test/wiring/**",
       "apps/api/test/wiring/**"
     ],
-    "walk": ["packages/simple-rest/test/walk/**"],
+    "walk": ["packages/*/test/walk/**", "examples/*/test/walk/**"],
     "always": ["owed.yaml"]
   },
   "tests": {
@@ -77,15 +77,11 @@
       "**/test/**/*.ts",
       "**/e2e/**/*.ts"
     ],
-    "command": "npx vitest run --root packages/simple-rest --reporter=json --outputFile={out} {files}"
+    "command": "TZ=UTC npx vitest run --reporter=json --outputFile={out} {files}"
   },
   "checks": {
-    "fast": ["npx biome check packages/simple-rest"],
+    "fast": [],
     "full": [
-      "npx biome check packages/simple-rest",
-      "npx tsc --noEmit -p packages/simple-rest/tsconfig.json",
-      "pnpm --filter @refinedev/simple-rest test",
-      "pnpm --filter @refinedev/simple-rest build",
       "node {workflow}/checks/guards/no-secrets.mjs",
       "node {workflow}/checks/guards/auth-endpoints.mjs"
     ],
@@ -182,5 +178,20 @@
   },
   "workflow": {
     "version": "stable"
+  },
+  "monorepo": {
+    "packages": "auto",
+    "checks": {
+      "fast": ["npx biome check {dir}", "pnpm --filter {name} types"],
+      "full": [
+        "npx biome check {dir}",
+        "pnpm --filter {name} types",
+        "TZ=UTC pnpm --filter {name} test",
+        "pnpm --filter {name} build"
+      ]
+    },
+    "tests": {
+      "command": "TZ=UTC npx vitest run --root {dir} --reporter=json --outputFile={out} {files}"
+    }
   }
 }
