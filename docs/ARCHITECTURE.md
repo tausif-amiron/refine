@@ -116,6 +116,32 @@ nothing opens on the upstream project unless `pr.repo` says so. Defaults: `origi
 
 ## paperclip
 
+**Setup and control.** `ai-sdlc paperclip-setup` (`orchestrator/paperclip-setup.ts`) does the whole setup once and is
+safe to run again: installs the `paperclipai` CLI (`npx paperclipai install`) when missing; onboards Paperclip the
+first time (`paperclipai onboard --yes --install-service`: local trusted mode, embedded database, a login service) or
+starts the installed service; finds or creates the company (`--company`, default the GitHub owner), the repository's
+project (`--project-name`, default the folder name, workspace = this checkout) and the runner agent (`<KEY> runner`,
+process adapter, the node that runs ai-sdlc and a PATH with the folders of `claude`, `gh` and the package manager,
+because launchd gives services a bare PATH); writes `paperclip.url`, `companyId`, `projectId`, `agentId`, `project`
+(keeping `mirror`, `autoStart`, `report`); installs the sync job (macOS: a launchd agent
+`com.ai-sdlc.paperclip-sync.<repo>` every 300 s via `$SHELL -ic`, log in `~/Library/Logs/ai-sdlc/`; elsewhere it prints
+the crontab line); syncs once; and lists the runner credentials that are missing. It never reads or sets credentials.
+`ai-sdlc paperclip status` checks the server, project, runner (and which credential names are set on it), and the sync
+job with its last run; `doctor` includes the same checks when Paperclip is configured.
+`ai-sdlc paperclip start|stop|restart|logs` wrap `paperclipai service …`; `paperclip sync` syncs now.
+`paperclip on` starts the server, syncs, then loads the sync job; `paperclip off` unloads the job, then stops the
+server. **Always on or on demand** (`paperclip.startAtLogin`, set by `paperclip-setup --on-demand` / `--always-on`):
+always on (default) registers Paperclip's service to start at login and keeps the job's plist in
+`~/Library/LaunchAgents`, which launchd loads at login; on demand reinstalls the service with `--no-start-on-login` and
+keeps the plist in `~/Library/Application Support/ai-sdlc/`, which only `paperclip on` loads. Paperclip is a service,
+not part of any Claude session, so closing Claude never stops it; `status` reports a stopped server as off (warn) in
+on-demand mode and as a failure in always-on mode. Setup and `on` both sync before loading the job, because the job
+also syncs when it loads and two syncs that see an empty project would create every issue twice.
+
+**What the sync mirrors.** `paperclip.mirror: "ready"` (default): tickets in `jira.readyStatus`. `"open"`: every ticket
+not done, so the board shows the backlog; the ones not ready say to move them in Jira first, and if one is assigned
+anyway, the runner parks it in the backlog with that note instead of raising a failure.
+
 **Dashboard.** With `paperclip.url`, `paperclip.companyId` and `paperclip.projectId` set (`report` defaults to on),
 every command reports on the ticket's Paperclip issue (`orchestrator/dashboard.ts`): one issue per ticket in the repo's
 project, named after the IR's title, owned by the board user (Paperclip will not put an unassigned issue in progress).
@@ -133,7 +159,7 @@ any step or gate. Jira stays the source of truth, code still decides pass or fai
   every new one at once instead). Tickets already in Paperclip are skipped, so it is safe on a schedule. Settings:
   `paperclip.url`, `.companyId`, `.agentId`, `.project`, `.projectId` (`PAPERCLIP_URL`, `PAPERCLIP_COMPANY_ID`,
   `PAPERCLIP_RUNNER_AGENT_ID`, `JIRA_PROJECT`); `PAPERCLIP_BOARD_KEY` when the instance requires authentication.
-- **Schedule**: run the sync every few minutes from the repository, in a shell that has the Jira variables. cron
+- **Schedule** (`paperclip-setup` does this): run the sync every few minutes from the repository, in a shell that has the Jira variables. cron
   (a server): `*/5 * * * * cd <repo> && zsh -ic 'node tools/ai-sdlc/bin/ai-sdlc.mjs paperclip-sync' >> <log> 2>&1`.
   macOS: a launchd agent in `~/Library/LaunchAgents` with `StartInterval` 300 running the same command
   (`launchctl bootstrap gui/$(id -u) <plist>`; `launchctl bootout` removes it). Paperclip itself must be running.
@@ -205,7 +231,7 @@ answers and accepts each key.
 `ai-sdlc.config.json` holds per-repo settings: scope templates per unit kind (`{name}` is the kebab-case IR
 name), test command, check commands, attempt and budget caps, models per agent, the escalation model (`escalationModel`: after `attemptsPerUnit` failures, `attempts` more on a stronger model, by default one on opus, before a person; setup problems go straight to a person), Jira statuses, release
 stages and thresholds, ops pre-approved actions. Values like `${HEALTH_URL}` are read from the environment;
-`tools/ai-sdlc` is the workflow's folder relative to the repo (`.` here, `tools/ai-sdlc` when installed).
+`.ai-sdlc/engine` is the workflow's folder relative to the repo (`.` here, `tools/ai-sdlc` when installed).
 
 - `scope.wiring`: the shared files no feature unit owns (routes, nav, app/router registration). The wiring
   unit runs after every screen and service and registers them. `scope.foundation` owns package.json and lockfiles.
@@ -260,6 +286,40 @@ commands to `.claude/`, merges hooks and permissions into `.claude/settings.json
 `CLAUDE.md` and existing docs, writes `ai-sdlc.config.json` from what the repo has (test runner, npm
 scripts), and adds `npm run ai-sdlc -- <command>`. `--update` replaces only workflow-owned files; the team's
 config, rules and doc edits survive. The workflows find the runtime through one variable, `W`.
+
+## workflow-updates
+
+Over-the-air (`install.mjs <repo> --ota`): the repo carries no copy of the workflow, so a workflow change needs no
+PR in it. The repo follows a release channel, `"workflow": { "version": "stable" }` in `ai-sdlc.config.json`
+(`"stable"` = the newest release, `"0.2"` = newest 0.2.x, `"0.2.1"` = exactly that), and runs `ai-sdlc`.
+
+- **Releases** are git tags `vX.Y.Z` on the workflow repo: `npm run release:workflow -- patch|minor|major` checks
+  (test, typecheck, guards), bumps the version (package.json, plugin manifest), commits and tags with the changes
+  since the last release. A person pushes it: `git push origin main vX.Y.Z`.
+- **The engine** (`scripts/engine.mjs`, the `ai-sdlc` command; once per machine:
+  `node <workflow>/scripts/engine.mjs setup`, then `~/.ai-sdlc/bin` on PATH) keeps a mirror of the workflow repo
+  and one folder per release in `~/.ai-sdlc/versions/`. Before each run it fetches release tags, installs the
+  version the repo follows if new (dependencies included, atomically), refreshes itself, and runs that version in
+  the repo with `AI_SDLC_PLUGIN_DIR` set. Offline, or without access to the workflow repo, it says so and runs the
+  newest installed version. `ai-sdlc version` and `ai-sdlc self-update` show and force it. A repo without a
+  `workflow` setting that still carries `tools/ai-sdlc` runs that copy, as before.
+- **Claude Code parts** come from the release as a plugin (`.claude-plugin/plugin.json`, every agent listed;
+  hooks in `hooks/hooks.json` run from `${CLAUDE_PLUGIN_ROOT}`): agent runs pass `--plugin-dir`, and agents are
+  named as before (`--agent dev-module` resolves to `ai-sdlc:dev-module`). People who want `/why`, `/grill` and
+  `/tutor` interactively install it once: `claude plugin install ai-sdlc@ai-sdlc --scope project` (the repo's
+  settings declare the marketplace). Permissions stay in the repo's `.claude/settings.json` (plugins cannot carry
+  them). The engine links the release at `.ai-sdlc/engine` in the repo (and in every unit worktree), so the check
+  command is `node .ai-sdlc/engine/checks/hooks/run-checks.mjs`, the same on every machine and in CI; a `$VARIABLE`
+  in a command is never pre-approved by Claude Code, so the path cannot be one.
+- **Paperclip**: the runner agent and the sync job start `~/.ai-sdlc/engine.mjs` (paperclip-setup under the
+  engine). Paperclip runs get no GitHub access, so they use the newest installed version; the sync job runs every
+  five minutes from a login shell and fetches new releases.
+- **CI**: every job checks out the workflow repo into `.ai-sdlc/engine` (secret `AI_SDLC_REPO_TOKEN`) and switches
+  to the release the repo follows (`engine.mjs resolve`).
+- **Traceability**: each PR says which release built it ("Built with ai-sdlc vX.Y.Z"). A ticket in flight picks up
+  a new release on its next step: fixes reach it (RT-1 needed three mid-ticket).
+- **What still needs a PR in the repo**: its own surface only: permissions, a new config key, CI templates, docs.
+  `ai-sdlc doctor` reports the release a repo runs.
 
 ## Simulator
 

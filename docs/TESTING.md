@@ -77,13 +77,13 @@ says a developer finished it; if not, it escalates again with the new report.
 ## contract-tests
 
 Both sides test against the contract, never against each other's code. Helpers in
-`tools/ai-sdlc/checks/contract/index.mjs` (the workflow folder: `tools/ai-sdlc` when installed):
+`.ai-sdlc/engine/checks/contract/index.mjs` (the workflow folder: `tools/ai-sdlc` when installed):
 
 - Provider tests: `assertResponse("contracts/openapi/<svc>.yaml", "GET", "/invoices/42", 200, body)` checks the
   status is documented and the body matches its schema. `assertRequest(...)` checks request bodies.
 - Consumer tests: `exampleFor("contracts/openapi/<svc>.yaml", "GET", "/invoices")` returns a deterministic body
   that matches the schema; mock with it instead of inventing data.
-- Static check (QA phase and CI): `node tools/ai-sdlc/checks/contract/verify.mjs` fails if an operation in a contract
+- Static check (QA phase and CI): `node .ai-sdlc/engine/checks/contract/verify.mjs` fails if an operation in a contract
   has no matching route in its owner's folder, or a route in that folder is not in the contract.
 
 ## seen-red
@@ -102,8 +102,16 @@ once, in either of two ways (seen-red is decided after the mutation gate runs):
 **Pins.** When no mutant can reach such a test, name it as a pin (`test_pin_...` in Python, `"pin: ..."` in
 JavaScript; `tests.pinPattern` overrides). A pin is held to the opposite rule: it must pass without the
 implementation and with it, which proves the behaviour did not change. A pin that fails without the change is
-rejected as mislabelled, and a unit that changed its implementation still needs at least one non-pin test seen red. Survivors are reported. Tests that go red under mutation are added to the ledger
+rejected as mislabelled, and a unit that changed its implementation still needs at least one non-pin test seen red. A pin must load without the change, so it
+cannot share a file that imports new code; put it in the test file's pins sibling (`a.test.ts` → `a.pins.test.ts`,
+`test_a.py` → `test_a_pins.py`), which is in SCOPE whenever the test file is. Survivors are reported. Tests that go red under mutation are added to the ledger
 `.ai-sdlc/seen-red.json`.
+
+**Test files that never run.** A test file the unit changed that produces no test under `tests.command`
+(excluded by the test config, say) fails seen-red: nothing in it was judged. A file that needs something the
+gates cannot start, such as the Firestore emulator, goes in `tests.external` (globs) in `ai-sdlc.config.json`,
+and a check outside the unit gates must run it, usually QA's `checks.integration`. The gate then names it as
+run elsewhere instead of failing. Found on AWT-3, where a broken rule merged with 16 of its own tests failing.
 
 ## mutation-catalogue
 
@@ -117,6 +125,11 @@ When none of those operators applies to a unit's changed lines (declarative code
 value), a second tier of **literal** mutants is used instead: emptied strings, dropped template or f-string
 expressions, emptied keyword or property values. The PR says which tier ran, or that the change was not tested by
 mutation at all.
+
+A mutant whose file no longer parses is dropped before it runs: the operators work on lines, so `<` and `>` can match
+a TypeScript generic or a JSX tag, and such a mutant proves nothing about the tests (JS and TS, checked with esbuild).
+Vendored code copied from a registry (shadcn components, say) can be left out with `mutation.skip` (globs) in
+`ai-sdlc.config.json`; the gate names the files it skipped, and their tests still run.
 
 **A repo's own mutation tool** can be a gate too (`mutation.external` in `ai-sdlc.config.json`): when a unit adds
 entries to that tool's catalogue, the tool runs on exactly those entries, and each must be caught. Example:

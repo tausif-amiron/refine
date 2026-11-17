@@ -31,7 +31,6 @@
       "Bash(ls*)",
       "Bash(pwd)",
       "mcp__playwright",
-      "Bash(node tools/ai-sdlc/checks/hooks/run-checks.mjs*)",
       "Bash(echo *)",
       "Bash(head *)",
       "Bash(tail *)",
@@ -44,7 +43,9 @@
       "Bash(npx eslint *)",
       "Bash(pnpm exec *)",
       "Bash(yarn test*)",
-      "Bash(yarn run *)"
+      "Bash(yarn run *)",
+      "Bash(git rm *)",
+      "Bash(node .ai-sdlc/engine/checks/hooks/run-checks.mjs*)"
     ],
     "ask": ["Bash(git push*)"],
     "deny": [
@@ -56,73 +57,16 @@
       "Bash(printenv*)"
     ]
   },
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/tools/ai-sdlc/checks/hooks/guard-files.mjs\"",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/tools/ai-sdlc/checks/hooks/guard-bash.mjs\"",
-            "timeout": 10
-          }
-        ]
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "extraKnownMarketplaces": {
+    "ai-sdlc": {
+      "source": {
+        "source": "github",
+        "repo": "tausif-amiron/AI-SDLC"
       }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/tools/ai-sdlc/checks/hooks/post-edit.mjs\"",
-            "timeout": 300
-          }
-        ]
-      },
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/tools/ai-sdlc/checks/hooks/tool-telemetry.mjs\"",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/tools/ai-sdlc/checks/hooks/stop.mjs\"",
-            "timeout": 900
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/tools/ai-sdlc/checks/hooks/stop.mjs\" --telemetry-only",
-            "timeout": 30
-          }
-        ]
-      }
-    ]
+    }
   },
-  "$schema": "https://json.schemastore.org/claude-code-settings.json"
+  "enabledPlugins": {
+    "ai-sdlc@ai-sdlc": true
+  }
 }

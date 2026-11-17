@@ -179,5 +179,8 @@
     "remote": "fork",
     "repo": "tausif-amiron/refine",
     "base": "main"
+  },
+  "workflow": {
+    "version": "stable"
   }
 }
