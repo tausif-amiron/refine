@@ -13,6 +13,7 @@ import {
   pickDataProvider,
   prepareQueryContext,
 } from "@definitions/helpers";
+import { isServerSide } from "@definitions/helpers/handlePaginationParams";
 import {
   useDataProvider,
   useHandleNotification,
@@ -163,7 +164,7 @@ export const useList = <
   const prefferedPagination = handlePaginationParams({
     pagination,
   });
-  const isServerPagination = prefferedPagination.mode === "server";
+  const isServerPagination = isServerSide(prefferedPagination.mode);
 
   const combinedMeta = getMeta({ resource, meta: preferredMeta });
 

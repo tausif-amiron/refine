@@ -45,6 +45,16 @@ By default, pagination happens on the server side. If you want to do pagination 
 
 <PaginationLivePreview/>
 
+### Cursor pagination
+
+With `pagination: { mode: "cursor" }`, `useTable` keeps a history of visited cursors and exposes `next()`, `prev()`, `hasNextPage` and `hasPreviousPage`. `total` is whatever the provider returns and `pageCount` is `undefined`. Changing filters, sorters or `pageSize` clears the history and returns to the first page. With `syncWithLocation`, the cursor is not written to the URL.
+
+```tsx
+const { next, prev, hasNextPage, hasPreviousPage } = useTable({
+  pagination: { mode: "cursor" },
+});
+```
+
 ## Sorting
 
 `useTable` has a sorter feature. The sorter is done by using the `initial` and `permanent` keys to `sorters` object. The `initial` is the initial sorter state, and the `permanent` is the permanent sorter state. These states are a [`CrudSorter`][crudsorting] type that contains the field and the order of the sorter.
@@ -178,11 +188,12 @@ useTable({
 
 ### pagination.mode
 
-It can be `"off"`, `"server"` or `"client"`. Defaults to `"server"`.
+It can be `"off"`, `"server"`, `"client"` or `"cursor"`. Defaults to `"server"`.
 
 - **"off":** Pagination is disabled. All records will be fetched.
 - **"client":** Pagination is done on the client side. All records will be fetched and then the records will be paginated on the client side.
 - **"server":**: Pagination is done on the server side. Records will be fetched by using the `currentPage` and `pageSize` values.
+- **"cursor":** Pagination is done on the server side by cursor. The current `cursor` (`undefined` on the first page) is sent to `getList` in the `pagination` param, and the response's `cursor.next` / `cursor.prev` drive navigation with `next()` and `prev()`. See [Cursor pagination](#cursor-pagination).
 
 ```tsx
 import { useTable } from "@refinedev/core";
@@ -554,7 +565,23 @@ A function to set the current page size state. If pagination is disabled, it wil
 
 ### pageCount
 
-Total page count state. If pagination is disabled, it will be `undefined`.
+Total page count state. If pagination is disabled or `pagination.mode` is `"cursor"`, it will be `undefined`.
+
+### next
+
+Cursor mode only. Moves to the response's `cursor.next` and pushes it onto the cursor history. Returns `false` and does nothing when there is no `cursor.next`.
+
+### prev
+
+Cursor mode only. Returns to the previous cursor in the history. Returns `false` and does nothing on the first page.
+
+### hasNextPage
+
+`true` when `pagination.mode` is `"cursor"` and the response has a `cursor.next`.
+
+### hasPreviousPage
+
+`true` when `pagination.mode` is `"cursor"` and there is a previous cursor in the history.
 
 ### createLinkForSyncWithLocation
 

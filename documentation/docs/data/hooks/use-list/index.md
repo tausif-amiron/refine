@@ -161,7 +161,7 @@ useList({
 
 #### mode
 
-This property can be `"off"`, `"client"` or `"server"`. It is used to determine whether to use server-side pagination or not.
+This property can be `"off"`, `"client"`, `"server"` or `"cursor"`. It is used to determine whether to use server-side pagination or not.
 
 ```tsx
 useList({
@@ -169,6 +169,23 @@ useList({
     mode: "off",
   },
 });
+```
+
+#### Cursor mode and `cursor`
+
+With `mode: "cursor"` pagination is done on the server by cursor instead of `currentPage`. The `cursor` value is passed to the data provider's `getList` in the `pagination` param (`undefined` fetches the first page). The response's `cursor.next` and `cursor.prev` (the same shape `useInfiniteList` reads) are returned in `result`.
+
+```tsx
+const { result } = useList({
+  pagination: {
+    mode: "cursor",
+    cursor: "abc123",
+    pageSize: 20,
+  },
+});
+
+result.cursor?.next; // cursor of the next page
+result.cursor?.prev; // cursor of the previous page
 ```
 
 ### queryOptions
