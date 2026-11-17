@@ -23,7 +23,7 @@ jobs:
         with: { fetch-depth: 0 }
       - name: Workflow (the release this repo follows)
         uses: actions/checkout@v4
-        with: { repository: tausif-amiron/AI-SDLC, path: .ai-sdlc/engine, fetch-depth: 0, token: "${{ secrets.AI_SDLC_REPO_TOKEN }}" }
+        with: { repository: AmironDev/AI-SDLC, path: .ai-sdlc/engine, fetch-depth: 0, token: "${{ secrets.AI_SDLC_REPO_TOKEN }}" }
       - name: Use that release
         run: git -C .ai-sdlc/engine checkout -q "$(node .ai-sdlc/engine/scripts/engine.mjs resolve "$(node -p "(require('./ai-sdlc.config.json').workflow || {}).version || 'stable'")")"
       - uses: actions/setup-node@v4
