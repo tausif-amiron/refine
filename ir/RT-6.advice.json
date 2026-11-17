@@ -1,0 +1,233 @@
+{
+  "questions": [
+    {
+      "options": [
+        {
+          "answer": "Add \"cursor\" as a fourth value: mode?: \"client\" | \"server\" | \"off\" | \"cursor\", meaning server-side pagination by cursor. In core, every check that means 'paginate on the server' changes from mode === \"server\" to a helper such as isServerSide(mode) that returns true for both \"server\" and \"cursor\".",
+          "confidence": "medium",
+          "evidence": [
+            "packages/core/src/contexts/data/types.ts:186",
+            "packages/core/src/hooks/data/useList.ts:166",
+            "packages/core/src/hooks/data/useList.ts:173",
+            "packages/core/src/hooks/data/useInfiniteList.ts:241",
+            "packages/simple-rest/src/provider.ts:73"
+          ],
+          "if_wrong": "Third-party providers (19 files in packages/ check mode === \"server\") silently fetch the whole collection in cursor mode. User code with an exhaustive switch on mode gets a TypeScript error after the upgrade.",
+          "why": "The ticket asks for pagination.mode: \"cursor\" in so many words. Adding a member to a union is additive for code that sets the field. But core sets hasPagination and the query key from mode === \"server\" in useList and useInfiniteList, so those checks must be widened. simple-rest only sends _start/_end when mode === \"server\". A provider that does not know \"cursor\" would send no pagination and return every record."
+        },
+        {
+          "answer": "Leave mode as \"client\" | \"server\" | \"off\" and treat cursor pagination as mode: \"server\" plus a separate cursor field. A cursor that is present means cursor mode.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/core/src/contexts/data/types.ts:171-187",
+            "packages/simple-rest/src/provider.ts:73-76",
+            "packages/core/src/hooks/data/useList.ts:166"
+          ],
+          "if_wrong": "There is no explicit signal on the first page, where no cursor exists yet, so useTable and antd cannot tell they should render prev/next only. Every consumer then needs an extra flag, and the ticket's API is not delivered.",
+          "why": "Every existing mode === \"server\" check (core useList, simple-rest and other providers) keeps working unchanged, so the type stays strictly additive. A provider that does not know about cursors falls back to offset paging by currentPage instead of fetching everything. This goes against the ticket's wording ('Add pagination.mode: \"cursor\"')."
+        },
+        {
+          "answer": "Add a separate discriminator, pagination.type?: \"offset\" | \"cursor\" (default \"offset\"), next to mode: \"server\".",
+          "confidence": "low",
+          "evidence": [
+            "packages/core/src/contexts/data/types.ts:171-187"
+          ],
+          "if_wrong": "It adds a second public field that docs and every adapter must learn. It also departs from the ticket text, so reviewers may reject it.",
+          "why": "This keeps mode's meaning (where pagination happens) apart from how pages are addressed, and leaves existing mode checks intact. Nothing in the repo uses this pattern today."
+        }
+      ],
+      "prompt": "Pagination.mode already has the values \"client\" | \"server\" | \"off\" (packages/core/src/contexts/data/types.ts). Should \"cursor\" be added as a fourth value, which means server-side pagination by cursor? Or should cursor be a separate option next to mode: \"server\"?",
+      "question": "Q-1",
+      "recommended": 0
+    },
+    {
+      "options": [
+        {
+          "answer": "Add an optional pagination.cursor?: string to the Pagination type. In cursor mode, core sends the current cursor there (undefined on the first page), and currentPage stays a number.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/core/src/contexts/data/types.ts:176",
+            "packages/core/src/hooks/data/useInfiniteList.ts:252-254",
+            "packages/core/src/hooks/useTable/index.ts:433-435"
+          ],
+          "if_wrong": "The field name differs from what the useInfiniteList path uses, so a provider written for useInfiniteList reads currentPage and ignores pagination.cursor. That provider returns page one again until it is updated.",
+          "why": "currentPage is typed number, and core useTable does arithmetic on it (pageCount) and puts it in the URL. A separate optional field is additive and can be checked by type. useInfiniteList today casts pageParam 'as number' into currentPage, which is a type lie that this option avoids for useList and useTable."
+        },
+        {
+          "answer": "Pass the cursor in currentPage, as useInfiniteList passes pageParam today, and widen currentPage to number | string.",
+          "confidence": "low",
+          "evidence": [
+            "packages/core/src/hooks/data/useInfiniteList.ts:252-254",
+            "examples/use-infinite-list/src/github-data-provider/index.ts:17-18",
+            "packages/simple-rest/src/provider.ts:74-75"
+          ],
+          "if_wrong": "This is a non-additive type change. TypeScript users doing arithmetic on currentPage get compile errors, or NaN offsets at runtime.",
+          "why": "This matches the one existing cursor path: the use-infinite-list example's GitHub provider reads pagination.currentPage as an ISO date cursor. But widening currentPage's type breaks every consumer that reads it as a number (math in pageCount, offset computation in simple-rest)."
+        },
+        {
+          "answer": "Pass the cursor through meta.cursor, as the existing table-material-ui-cursor-pagination example does, with no Pagination type change.",
+          "confidence": "low",
+          "evidence": [
+            "examples/table-material-ui-cursor-pagination/src/pages/posts/list.tsx:11-15",
+            "examples/table-material-ui-cursor-pagination/src/rest-data-provider/index.ts:16-18"
+          ],
+          "if_wrong": "Providers have no typed contract to implement. It does not meet the ticket's request for 'a cursor request param' on useList and useTable.",
+          "why": "This needs no change to the core type, and one example already does it. But meta is untyped (any), so the provider contract is invisible to TypeScript and docs, and useTable cannot own the cursor history."
+        }
+      ],
+      "prompt": "In cursor mode, how is the request cursor passed to getList? As a new pagination.cursor field, or as currentPage carrying the cursor value, the way useInfiniteList passes pageParam today?",
+      "question": "Q-2",
+      "recommended": 0
+    },
+    {
+      "options": [
+        {
+          "answer": "Default the request params to cursor and limit. By default, read next and prev from the response headers x-next-cursor and x-prev-cursor. Add an optional third argument, dataProvider(apiUrl, httpClient, { cursor: { cursorParam, limitParam, getCursor(response) } }), to override both.",
+          "confidence": "low",
+          "evidence": [
+            "packages/simple-rest/src/provider.ts:37-43",
+            "packages/simple-rest/src/provider.ts:90-98",
+            "packages/simple-rest/src/provider.ts:16-31"
+          ],
+          "if_wrong": "Backends that put cursors in the body (Stripe style, has_more / next_cursor) or in a Link header get empty cursor.next and navigation never advances, unless the user supplies getCursor.",
+          "why": "In simple-rest the response body is the record array (data is returned as-is), and list metadata already comes from a header (x-total-count). Header defaults keep the body contract unchanged. A third optional argument is additive to the current two-argument signature. The code does not settle which header names real backends use; that is a convention choice."
+        },
+        {
+          "answer": "Default the request params to cursor and limit, and read next and prev from a JSON body envelope such as { data: [...], next_cursor, prev_cursor } in cursor mode only.",
+          "confidence": "low",
+          "evidence": [
+            "packages/simple-rest/src/provider.ts:95-98"
+          ],
+          "if_wrong": "A json-server-style backend returning a bare array in cursor mode yields data undefined and an empty table.",
+          "why": "This matches common Stripe and GraphQL-like REST shapes. But in cursor mode simple-rest would then unwrap response.data.data, while offset mode returns the body array as-is (provider.ts:96), so the two modes would have different body contracts."
+        },
+        {
+          "answer": "No defaults for response parsing: cursor mode requires a getCursor(response) function passed as a new optional third argument. The request param names are configurable, defaulting to cursor and limit.",
+          "confidence": "low",
+          "evidence": [
+            "packages/simple-rest/src/provider.ts:37-43"
+          ],
+          "if_wrong": "Users who switch on mode: \"cursor\" without config get a runtime error or no navigation. The example app must carry the config.",
+          "why": "Nothing in the repo shows a cursor convention for simple-rest, so forcing explicit configuration avoids guessing. It is additive to the signature. It is not 'out of the box', which the ticket implies with 'configurable param names'."
+        }
+      ],
+      "prompt": "What are the default query param names for cursor mode in simple-rest (for example cursor and limit)? Where does simple-rest read the next and prev cursors from in the API response: the body, the headers, or a configurable function?",
+      "question": "Q-3",
+      "recommended": 0
+    },
+    {
+      "options": [
+        {
+          "answer": "Ship a small local cursor-aware mock backend with the example (or stub responses in its Cypress spec with cy.intercept), implementing the simple-rest cursor defaults chosen for Q-3. Point the app at it.",
+          "confidence": "medium",
+          "evidence": [
+            "cypress/support/e2e.ts:129",
+            "examples/use-infinite-list/src/App.tsx:49"
+          ],
+          "if_wrong": "The mock may drift from real APIs, so the example works against an idealised server only. It is also extra code to maintain in examples/.",
+          "why": "The repo cannot show that api.fake-rest.refine.dev supports cursor params; it is an external service not in this repo. A local or stubbed backend exercises the real simple-rest cursor code path and is deterministic in CI. The Cypress setup already uses cy.intercept (telemetry), so stubbing has precedent."
+        },
+        {
+          "answer": "Use the GitHub commits API, as the existing use-infinite-list and table-material-ui-cursor-pagination examples do, with a custom data provider in the example.",
+          "confidence": "medium",
+          "evidence": [
+            "examples/use-infinite-list/src/github-data-provider/index.ts:15-25",
+            "examples/table-material-ui-cursor-pagination/src/rest-data-provider/index.ts:13-24"
+          ],
+          "if_wrong": "The e2e test is flaky from the network and rate limits, and simple-rest cursor mode is never exercised end to end.",
+          "why": "There is precedent for cursor examples in this repo. But those examples use a custom provider rather than simple-rest, and one hardcodes total: 200 because GitHub returns no total. This would not demonstrate the simple-rest cursor support the ticket adds. That GitHub rate-limits unauthenticated calls is inference, not something the repo shows."
+        },
+        {
+          "answer": "Extend the shared fake REST API (api.fake-rest.refine.dev) to accept cursor and limit and return cursor headers, then use it like the other examples.",
+          "confidence": "low",
+          "evidence": [
+            "examples/use-infinite-list/src/App.tsx:49"
+          ],
+          "if_wrong": "The example is blocked on an external deploy. If that deploy lags, the e2e test runs against a server that ignores cursors.",
+          "why": "This keeps the examples consistent with the rest of examples/. The service is not in this repo, so this work is outside the ticket's scope and cannot be checked here."
+        }
+      ],
+      "prompt": "Which backend should the cursor example app call? The fake REST API the other examples use may not support cursor params.",
+      "question": "Q-4",
+      "recommended": 0
+    },
+    {
+      "options": [
+        {
+          "answer": "In cursor mode, any change to filters, sorters or pageSize clears the cursor history and resets to the first page (cursor undefined). With syncWithLocation, write only pageSize, sorters and filters to the URL, not the cursor, so a deep link opens page one of that query.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/core/src/hooks/useTable/index.ts:372-421",
+            "packages/antd/src/hooks/table/useTable/useTable.ts:154-189",
+            "packages/core/src/hooks/useTable/index.ts:336-350"
+          ],
+          "if_wrong": "A shared URL in cursor mode always opens page one, so users who expect a deep link to page N lose it.",
+          "why": "Core useTable today does not reset currentPage when filters or sorters change (the setters only update state). antd resets only on search-form submit, not on table onChange. In offset mode a stale page number is bounded; a stale cursor belongs to a different result set. Leaving the cursor out of the URL avoids links that point at a history the receiving user doesn't have."
+        },
+        {
+          "answer": "Reset the cursor history on filter, sorter or pageSize change, and with syncWithLocation also write the current cursor to the URL (for example ?cursor=...). On load from a URL, start history at that cursor with prev disabled until the user moves forward.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/core/src/hooks/useTable/index.ts:242-252",
+            "packages/core/src/hooks/useTable/index.ts:301-321"
+          ],
+          "if_wrong": "Cursors that expire or are tied to a session make shared links show empty or error pages. prev is disabled after a reload, which looks like a bug.",
+          "why": "The current syncWithLocation code writes pagination state to the query, and createLinkForSyncWithLocation builds links from it. Adding the cursor keeps deep links working. The history (for prev) cannot be rebuilt from a single cursor."
+        },
+        {
+          "answer": "Keep the current offset behaviour unchanged (no automatic reset) and leave resetting to the caller in cursor mode too.",
+          "confidence": "low",
+          "evidence": [
+            "packages/core/src/hooks/useTable/index.ts:284-291"
+          ],
+          "if_wrong": "Users see wrong or empty pages after filtering or sorting, which is the failure the question describes.",
+          "why": "This changes the least: core useTable does not reset today. But after a filter change in cursor mode the old cursor is sent with new filters, and the code shows nothing that would make that safe."
+        }
+      ],
+      "prompt": "In cursor mode, should useTable clear its cursor history and go back to the first page when filters, sorters or pageSize change? Should the current cursor sync to the URL when syncWithLocation is on?",
+      "question": "Q-5",
+      "recommended": 0
+    },
+    {
+      "options": [
+        {
+          "answer": "In cursor mode, return total as whatever the provider returns (undefined when absent) and pageCount as undefined. Add hasNextPage and hasPreviousPage booleans from cursor.next / cursor.prev and the history. antd renders prev/next only and shows a total only when one is present.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/core/src/hooks/useTable/index.ts:157-160",
+            "packages/core/src/hooks/useTable/index.ts:433-435",
+            "packages/antd/src/hooks/table/useTable/useTable.ts:237"
+          ],
+          "if_wrong": "Widening pageCount to number | undefined is a type change that may break strict TypeScript callers. If kept as number, document what value it holds in cursor mode.",
+          "why": "pageCount is computed as ceil(total / pageSize), which is meaningless without a real total. The return type already allows total: number | undefined. But pageCount is typed number, so making it number | undefined widens the public type. Alternatively keep pageCount a number and document it. antd passes data?.total straight into its pagination today."
+        },
+        {
+          "answer": "Keep pageCount: number and total as returned. In cursor mode pageCount = number of pages visited so far + (cursor.next ? 1 : 0). antd shows no total.",
+          "confidence": "low",
+          "evidence": [
+            "packages/core/src/hooks/useTable/index.ts:157",
+            "packages/simple-rest/src/provider.ts:16-31"
+          ],
+          "if_wrong": "Code that reads pageCount as the total number of pages (for example 'Page 2 of N') shows a growing, wrong number.",
+          "why": "This keeps the public type unchanged. But simple-rest's getTotal falls back to data.length when the total header is missing, so 'total' in cursor mode would be just the current page size, and a pageCount built from history is not a real count."
+        },
+        {
+          "answer": "Keep the existing formula ceil(total / pageSize) in cursor mode too, and let antd display total as today.",
+          "confidence": "low",
+          "evidence": [
+            "packages/core/src/hooks/useTable/index.ts:433-435",
+            "packages/simple-rest/src/provider.ts:16-31",
+            "packages/antd/src/hooks/table/useTable/useTable.ts:233-237"
+          ],
+          "if_wrong": "Users see a wrong page count of 1, and antd's numbered pager hides or disables 'next' even when a next cursor exists.",
+          "why": "This needs no code change. With simple-rest's data.length fallback, total equals the current page size, so pageCount is 1 and antd shows one page with no way forward."
+        }
+      ],
+      "prompt": "In cursor mode, what does useTable return for total and pageCount when the API returns no total? Should antd still show a total?",
+      "question": "Q-6",
+      "recommended": 0
+    }
+  ],
+  "schema": "ai-sdlc.advice.v1",
+  "ticket": "RT-6"
+}
