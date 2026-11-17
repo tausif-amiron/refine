@@ -154,7 +154,20 @@ export type useTableReturnType<
   setCurrentPage: ReactSetState<useTableReturnType["currentPage"]>;
   pageSize: number;
   setPageSize: ReactSetState<useTableReturnType["pageSize"]>;
-  pageCount: number;
+  /**
+   * `undefined` in `"cursor"` pagination mode.
+   */
+  pageCount: number | undefined;
+  /**
+   * Cursor mode: go to `cursor.next`. Returns `false` and does nothing when there is none.
+   */
+  next: () => boolean;
+  /**
+   * Cursor mode: go back to the previous cursor. Returns `false` and does nothing on the first page.
+   */
+  prev: () => boolean;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
   result: {
     data: TData[];
     total: number | undefined;
@@ -289,6 +302,17 @@ export function useTable<
   );
   const [currentPage, setCurrentPage] = useState<number>(defaultCurrentPage);
   const [pageSize, setPageSize] = useState<number>(defaultPageSize);
+  const isCursorMode = pagination?.mode === "cursor";
+  // History of visited cursors; the first page is `undefined`.
+  const [cursorHistory, setCursorHistory] = useState<(string | undefined)[]>([
+    undefined,
+  ]);
+  const currentCursor = cursorHistory[cursorHistory.length - 1];
+
+  // Any change to filters, sorters or pageSize starts over from the first page.
+  useEffect(() => {
+    setCursorHistory((prev) => (prev.length === 1 ? prev : [undefined]));
+  }, [filters, sorters, pageSize]);
 
   const getCurrentQueryParams = (): object => {
     // We get QueryString parameters that are uncontrolled by refine.
@@ -311,7 +335,11 @@ export function useTable<
           keepQuery: true,
         },
         query: {
-          ...(isPaginationEnabled ? { currentPage, pageSize } : {}),
+          ...(isPaginationEnabled
+            ? isCursorMode
+              ? { pageSize }
+              : { currentPage, pageSize }
+            : {}),
           sorters,
           filters,
           ...getCurrentQueryParams(),
@@ -341,7 +369,11 @@ export function useTable<
           keepQuery: true,
         },
         query: {
-          ...(isPaginationEnabled ? { pageSize, currentPage } : {}),
+          ...(isPaginationEnabled
+            ? isCursorMode
+              ? { pageSize }
+              : { pageSize, currentPage }
+            : {}),
           sorters: differenceWith(sorters, preferredPermanentSorters, isEqual),
           filters: differenceWith(filters, preferredPermanentFilters, isEqual),
         },
@@ -351,7 +383,12 @@ export function useTable<
 
   const queryResult = useList<TQueryFnData, TError, TData>({
     resource: identifier,
-    pagination: { currentPage: currentPage, pageSize, mode: pagination?.mode },
+    pagination: {
+      currentPage: currentPage,
+      pageSize,
+      mode: pagination?.mode,
+      ...(isCursorMode ? { cursor: currentCursor } : {}),
+    },
     filters: isServerSideFilteringEnabled
       ? unionFilters(preferredPermanentFilters, filters)
       : undefined,
@@ -420,7 +457,27 @@ export function useTable<
     [preferredPermanentSorters],
   );
 
+  const nextCursor: string | undefined = queryResult.result?.cursor?.next;
+  const hasNextPage = isCursorMode && !!nextCursor;
+  const hasPreviousPage = isCursorMode && cursorHistory.length > 1;
+
+  const next = (): boolean => {
+    if (!hasNextPage) return false;
+    setCursorHistory((prev) => [...prev, nextCursor]);
+    return true;
+  };
+
+  const prev = (): boolean => {
+    if (!hasPreviousPage) return false;
+    setCursorHistory((prev) => prev.slice(0, -1));
+    return true;
+  };
+
   return {
+    next,
+    prev,
+    hasNextPage,
+    hasPreviousPage,
     tableQuery: queryResult.query,
     sorters,
     setSorters: setSortWithUnion,
@@ -430,9 +487,11 @@ export function useTable<
     setCurrentPage,
     pageSize,
     setPageSize,
-    pageCount: pageSize
-      ? Math.ceil((queryResult.result?.total ?? 0) / pageSize)
-      : 1,
+    pageCount: isCursorMode
+      ? undefined
+      : pageSize
+        ? Math.ceil((queryResult.result?.total ?? 0) / pageSize)
+        : 1,
     createLinkForSyncWithLocation,
     overtime: queryResult.overtime,
     result: {
