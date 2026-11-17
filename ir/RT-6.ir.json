@@ -1,0 +1,223 @@
+{
+  "entities": [],
+  "external_systems": [],
+  "limits": [],
+  "modules": [
+    {
+      "anchor": {
+        "quote": "Add pagination.mode: \"cursor\" with a cursor request param to useList and useTable in core.",
+        "section": "Scope"
+      },
+      "behaviours": [
+        "The Pagination type accepts mode \"cursor\" and a cursor request param; the change is additive and every existing Pagination and GetListResponse field and type stays valid",
+        "In cursor mode the request reuses the existing GetListResponse cursor shape (cursor.next / cursor.prev) that useInfiniteList and useInfinitePagination already read; no second cursor shape is introduced",
+        "useList with pagination mode \"cursor\" passes the given cursor to the data provider's getList in the pagination param and returns the response's cursor.next / cursor.prev",
+        "useTable in cursor mode keeps a history of visited cursors and exposes next() and prev() navigation",
+        "useTable next() moves to the response's cursor.next and pushes it onto the history; prev() returns to the previous cursor from the history; prev() on the first page and next() when there is no cursor.next do nothing and are reported as unavailable",
+        "Offset modes (\"server\", \"client\", \"off\") behave exactly as before: currentPage and pageSize handling, the getList params and the existing useList and useTable tests are unchanged",
+        "useInfiniteList and getNextPageParam / getPreviousPageParam behaviour is unchanged",
+        "The use-list and use-table docs describe cursor mode, the cursor param and next/prev navigation",
+        "A changeset declares a minor bump for @refinedev/core"
+      ],
+      "files": [
+        "packages/core/src/contexts/data/types.ts",
+        "packages/core/src/hooks/data/useList.ts",
+        "packages/core/src/hooks/useTable/index.ts",
+        "documentation/docs/data/hooks/use-list/index.md",
+        "documentation/docs/data/hooks/use-table/index.md",
+        ".changeset/core-cursor-pagination.md"
+      ],
+      "name": "core-cursor-pagination",
+      "tests": [
+        "packages/core/src/hooks/data/useList.spec.tsx",
+        "packages/core/src/hooks/useTable/index.spec.ts"
+      ]
+    },
+    {
+      "anchor": {
+        "quote": "simple-rest: support cursor params in getList (configurable param names).",
+        "section": "Scope"
+      },
+      "behaviours": [
+        "getList with pagination mode \"cursor\" sends the cursor and page size as query params, does not send _start / _end, and returns cursor.next / cursor.prev in the GetListResponse",
+        "The cursor query param names can be configured when the data provider is created; when they are not configured, documented defaults are used",
+        "getList in offset mode still sends _start / _end computed from currentPage and pageSize, and the existing getList, total and walk tests pass unchanged",
+        "The simple-rest docs describe cursor mode and how to configure the param names",
+        "A changeset declares a minor bump for @refinedev/simple-rest"
+      ],
+      "files": [
+        "packages/simple-rest/src/provider.ts",
+        "packages/simple-rest/src/index.ts",
+        "documentation/docs/data/packages/simple-rest/index.md",
+        ".changeset/simple-rest-cursor-pagination.md"
+      ],
+      "name": "simple-rest-cursor-pagination",
+      "tests": [
+        "packages/simple-rest/test/getList/index.spec.ts",
+        "packages/simple-rest/test/getList/index.mock.ts"
+      ],
+      "uses": [
+        "core-cursor-pagination"
+      ]
+    },
+    {
+      "anchor": {
+        "quote": "antd useTable: render prev/next pagination in cursor mode.",
+        "section": "Scope"
+      },
+      "behaviours": [
+        "antd useTable in cursor mode renders prev/next pagination controls instead of numbered page links",
+        "The next control calls core useTable next() and the prev control calls prev(); each control is disabled when that direction is unavailable",
+        "antd useTable in offset mode renders the same tableProps.pagination (current, pageSize, total, numbered links) as before, and the existing useTable tests pass unchanged",
+        "The antd use-table docs describe cursor mode",
+        "A changeset declares a minor bump for @refinedev/antd"
+      ],
+      "files": [
+        "packages/antd/src/hooks/table/useTable/useTable.ts",
+        "packages/antd/src/hooks/table/useTable/paginationLink.tsx",
+        "packages/antd/src/hooks/table/useTable/index.ts",
+        "documentation/docs/ui-integrations/ant-design/hooks/use-table/index.md",
+        ".changeset/antd-cursor-pagination.md"
+      ],
+      "name": "antd-cursor-pagination",
+      "tests": [
+        "packages/antd/src/hooks/table/useTable/useTable.spec.tsx"
+      ],
+      "uses": [
+        "core-cursor-pagination"
+      ]
+    },
+    {
+      "anchor": {
+        "quote": "New example app in examples/ demonstrating cursor mode.",
+        "section": "Acceptance criteria"
+      },
+      "behaviours": [
+        "A new example app examples/table-antd-cursor-pagination shows an antd table that uses useTable with pagination mode \"cursor\" and the simple-rest data provider",
+        "In the example, clicking next loads the next page through the cursor, clicking prev returns to the previous page, and prev is disabled on the first page",
+        "The example needs its own package.json with dev, build and start scripts like the other examples; the foundation unit creates it with the listed packages"
+      ],
+      "files": [
+        "examples/table-antd-cursor-pagination/index.html",
+        "examples/table-antd-cursor-pagination/vite.config.ts",
+        "examples/table-antd-cursor-pagination/tsconfig.json",
+        "examples/table-antd-cursor-pagination/README.md",
+        "examples/table-antd-cursor-pagination/src/**"
+      ],
+      "name": "table-antd-cursor-pagination-example",
+      "packages": [
+        {
+          "name": "@refinedev/core"
+        },
+        {
+          "name": "@refinedev/antd"
+        },
+        {
+          "name": "@refinedev/simple-rest"
+        },
+        {
+          "name": "@refinedev/react-router"
+        },
+        {
+          "name": "antd"
+        },
+        {
+          "name": "react"
+        },
+        {
+          "name": "react-dom"
+        },
+        {
+          "name": "react-router"
+        },
+        {
+          "dev": true,
+          "name": "vite"
+        },
+        {
+          "dev": true,
+          "name": "@vitejs/plugin-react"
+        },
+        {
+          "dev": true,
+          "name": "typescript"
+        }
+      ],
+      "tests": [
+        "cypress/e2e/table-antd-cursor-pagination/all.cy.ts"
+      ],
+      "uses": [
+        "core-cursor-pagination",
+        "simple-rest-cursor-pagination",
+        "antd-cursor-pagination"
+      ]
+    }
+  ],
+  "questions": [
+    {
+      "affects": "The public Pagination type of @refinedev/core and how every data provider and UI adapter tells cursor mode from offset mode",
+      "if_wrong": "Data providers that branch on mode === \"server\" may silently stop paginating in cursor mode, or the type becomes non-additive and breaks existing users",
+      "q": "Pagination.mode already has the values \"client\" | \"server\" | \"off\" (packages/core/src/contexts/data/types.ts). Should \"cursor\" be added as a fourth value, which means server-side pagination by cursor? Or should cursor be a separate option next to mode: \"server\"?"
+    },
+    {
+      "affects": "The getList params contract that @refinedev/core sends and @refinedev/simple-rest and third-party providers read",
+      "if_wrong": "Providers read the cursor from the wrong field, so every page after the first returns page one again or fails",
+      "q": "In cursor mode, how is the request cursor passed to getList? As a new pagination.cursor field, or as currentPage carrying the cursor value, the way useInfiniteList passes pageParam today?"
+    },
+    {
+      "affects": "The out-of-the-box behaviour of the simple-rest getList in cursor mode, and the example app",
+      "if_wrong": "The defaults do not match common cursor APIs or the example backend, so cursor.next / cursor.prev are always empty and navigation never advances",
+      "q": "What are the default query param names for cursor mode in simple-rest (for example cursor and limit)? Where does simple-rest read the next and prev cursors from in the API response: the body, the headers, or a configurable function?"
+    },
+    {
+      "affects": "The new example app and its Cypress test",
+      "if_wrong": "The example cannot show real cursor navigation, or its e2e test depends on a server that ignores cursors",
+      "q": "Which backend should the cursor example app call? The fake REST API the other examples use may not support cursor params."
+    },
+    {
+      "affects": "Table navigation in core useTable and antd useTable when users filter or sort, and deep links to a page",
+      "if_wrong": "Stale cursors from an earlier query are reused after a filter change and show wrong or empty pages, or a shared URL opens a different page than the user saw",
+      "q": "In cursor mode, should useTable clear its cursor history and go back to the first page when filters, sorters or pageSize change? Should the current cursor sync to the URL when syncWithLocation is on?"
+    },
+    {
+      "affects": "The useTable return values and the antd pagination display in cursor mode",
+      "if_wrong": "The UI shows a wrong page count or total, or code that reads pageCount breaks",
+      "q": "In cursor mode, what does useTable return for total and pageCount when the API returns no total? Should antd still show a total?"
+    }
+  ],
+  "roles": [],
+  "schema": "ai-sdlc.ir.v1",
+  "screens": [],
+  "sealed_acceptance_criteria": [
+    {
+      "id": "AC-1",
+      "text": "Type changes are additive and consistent with the existing useInfiniteList cursor shape."
+    },
+    {
+      "id": "AC-2",
+      "text": "useTable exposes next/prev cursor navigation."
+    },
+    {
+      "id": "AC-3",
+      "text": "New example app in examples/ demonstrating cursor mode."
+    },
+    {
+      "id": "AC-4",
+      "text": "Tests in core and simple-rest, plus an antd adapter test."
+    },
+    {
+      "id": "AC-5",
+      "text": "Docs updated."
+    },
+    {
+      "id": "AC-6",
+      "text": "Changesets (minor) for each touched package."
+    }
+  ],
+  "sealed_hash": "sha256:49de4a7c98f5cb0781f7f32edfb79c9461f68124abd2a2ea76be659102c7fe9c",
+  "services": [],
+  "ticket": "RT-6",
+  "ticket_hash": "sha256:1782ee1ecc217549860cdb2db1e42b812f5888890b4243f16bb1f081b161626c",
+  "title": "Cursor-based pagination support across core, simple-rest and antd",
+  "unplaced": []
+}
