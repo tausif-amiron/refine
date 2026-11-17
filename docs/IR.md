@@ -357,12 +357,12 @@ consumes), the roles they mention, the criteria that name them, and answered que
 
 ## Editing after extraction
 
-| You want to                            | Do this                                                                                               |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| answer a question                      | write `questions[].answer`, adjust sections if the answer changes them, commit, re-plan               |
-| fix a wrong entity, screen or service  | edit the IR, commit, re-plan. The plan records the IR's hash; a changed IR starts a fresh build state |
-| change the acceptance criteria         | change the ticket, then re-extract. Editing them in the file breaks the seal and the build refuses    |
-| check the ticket has not changed since | CI does this (`checks/guards/ir-drift.ts`): the live ticket's hash must equal `ticket_hash`           |
+| You want to                            | Do this                                                                                                                                                                                                                            |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| answer a question                      | write `questions[].answer`, adjust sections if the answer changes them, commit, re-plan                                                                                                                                            |
+| fix a wrong entity, screen or service  | edit the IR, commit, re-plan. A passed unit stays passed only if its fingerprint (its definition and the IR slice its brief shows, answers included) is unchanged and every unit it depends on stayed passed; the rest build again |
+| change the acceptance criteria         | change the ticket, then re-extract. Editing them in the file breaks the seal and the build refuses                                                                                                                                 |
+| check the ticket has not changed since | CI does this (`checks/guards/ir-drift.ts`): the live ticket's hash must equal `ticket_hash`                                                                                                                                        |
 
 ## Choosing the section
 

@@ -17,7 +17,7 @@ concurrency:
   group: ops   # serialise: dedup must see the previous alert's ticket
   cancel-in-progress: false
 env:
-  W: tools/ai-sdlc   # "." in the workflow repo, "tools/ai-sdlc" when installed
+  W: .ai-sdlc/engine   # the workflow release this repo follows (checked out in each job)
   JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
   JIRA_EMAIL: ${{ secrets.JIRA_OPS_EMAIL }}
   JIRA_API_TOKEN: ${{ secrets.JIRA_OPS_TOKEN }}
@@ -31,6 +31,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 50 }
+      - name: Workflow (the release this repo follows)
+        uses: actions/checkout@v4
+        with: { repository: AmironDev/AI-SDLC, path: .ai-sdlc/engine, fetch-depth: 0, token: "${{ secrets.AI_SDLC_REPO_TOKEN }}" }
+      - name: Use that release
+        run: git -C .ai-sdlc/engine checkout -q "$(node .ai-sdlc/engine/scripts/engine.mjs resolve "$(node -p "(require('./ai-sdlc.config.json').workflow || {}).version || 'stable'")")"
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm, cache-dependency-path: "**/package-lock.json" }
       - run: npm ci --prefix "$W"
@@ -50,6 +55,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Workflow (the release this repo follows)
+        uses: actions/checkout@v4
+        with: { repository: AmironDev/AI-SDLC, path: .ai-sdlc/engine, fetch-depth: 0, token: "${{ secrets.AI_SDLC_REPO_TOKEN }}" }
+      - name: Use that release
+        run: git -C .ai-sdlc/engine checkout -q "$(node .ai-sdlc/engine/scripts/engine.mjs resolve "$(node -p "(require('./ai-sdlc.config.json').workflow || {}).version || 'stable'")")"
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm, cache-dependency-path: "**/package-lock.json" }
       - run: npm ci --prefix "$W"
