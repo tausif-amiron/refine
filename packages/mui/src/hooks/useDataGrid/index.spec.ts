@@ -368,4 +368,15 @@ describe("useDataGrid Hook", () => {
       },
     ]);
   });
+
+  it("exposes core's cursor controls (next, prev, hasNextPage, hasPreviousPage)", async () => {
+    const { result } = renderHook(() => useDataGrid({}), {
+      wrapper: TestWrapper({}),
+    });
+
+    expect(typeof result.current.next).toBe("function");
+    expect(typeof result.current.prev).toBe("function");
+    expect(result.current.hasNextPage).toBe(false);
+    expect(result.current.hasPreviousPage).toBe(false);
+  });
 });

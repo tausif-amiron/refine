@@ -1270,4 +1270,93 @@ describe("useList Hook", () => {
       }),
     );
   });
+
+  describe("cursor pagination", () => {
+    const wrap = (getList: any) =>
+      TestWrapper({
+        dataProvider: { default: { ...MockJSONServer.default, getList } },
+        resources: [{ name: "posts" }],
+      });
+
+    it("passes the cursor to getList and returns cursor.next / cursor.prev", async () => {
+      const getListMock = vi.fn().mockResolvedValue({
+        data: [{ id: 1 }],
+        cursor: { next: "n1", prev: "p1" },
+      });
+
+      const { result } = renderHook(
+        () =>
+          useList({
+            resource: "posts",
+            pagination: { mode: "cursor", cursor: "c0", pageSize: 5 },
+          }),
+        { wrapper: wrap(getListMock) },
+      );
+
+      await waitFor(() => {
+        expect(result.current.query.isSuccess).toBeTruthy();
+      });
+
+      expect(getListMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          pagination: expect.objectContaining({
+            mode: "cursor",
+            cursor: "c0",
+            pageSize: 5,
+          }),
+        }),
+      );
+      expect(result.current.result.cursor).toEqual({
+        next: "n1",
+        prev: "p1",
+      });
+    });
+
+    it("includes the cursor in the query key so each cursor refetches", async () => {
+      const getListMock = vi
+        .fn()
+        .mockResolvedValue({ data: [], cursor: { next: "x" } });
+
+      const { rerender } = renderHook(
+        ({ cursor }: { cursor?: string }) =>
+          useList({
+            resource: "posts",
+            pagination: { mode: "cursor", cursor },
+          }),
+        { wrapper: wrap(getListMock), initialProps: { cursor: undefined } },
+      );
+
+      await waitFor(() => {
+        expect(getListMock).toHaveBeenCalledTimes(1);
+      });
+
+      rerender({ cursor: "abc" });
+
+      await waitFor(() => {
+        expect(getListMock).toHaveBeenCalledTimes(2);
+      });
+      expect(getListMock.mock.calls[1][0].pagination.cursor).toBe("abc");
+    });
+
+    it("pin: offset modes do not send a cursor param", async () => {
+      const getListMock = vi.fn().mockResolvedValue({ data: [], total: 0 });
+
+      const { result } = renderHook(
+        () =>
+          useList({
+            resource: "posts",
+            pagination: { mode: "server", currentPage: 2, pageSize: 5 },
+          }),
+        { wrapper: wrap(getListMock) },
+      );
+
+      await waitFor(() => {
+        expect(result.current.query.isSuccess).toBeTruthy();
+      });
+
+      const sent = getListMock.mock.calls[0][0].pagination;
+      expect(sent).toEqual({ currentPage: 2, pageSize: 5, mode: "server" });
+      expect("cursor" in sent).toBe(false);
+    });
+  });
 });

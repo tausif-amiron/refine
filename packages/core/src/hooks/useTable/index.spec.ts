@@ -1553,3 +1553,146 @@ describe("useTable Filters", () => {
     );
   });
 });
+
+describe("useTable cursor pagination", () => {
+  const nextOf: Record<string, string | undefined> = {
+    first: "c1",
+    c1: "c2",
+    c2: undefined,
+  };
+
+  const makeGetList = () =>
+    vi.fn().mockImplementation(({ pagination }) =>
+      Promise.resolve({
+        data: [{ id: pagination.cursor ?? "first" }],
+        cursor: { next: nextOf[pagination.cursor ?? "first"] },
+      }),
+    );
+
+  const setup = (getList: any, props: any = {}) =>
+    renderHook(() => useTable({ resource: "posts", ...props }), {
+      wrapper: TestWrapper({
+        dataProvider: { default: { ...MockJSONServer.default, getList } },
+        resources: [{ name: "posts" }],
+        routerProvider,
+      }),
+    });
+
+  const lastCursor = (getList: any) =>
+    getList.mock.calls[getList.mock.calls.length - 1][0].pagination.cursor;
+
+  it("first page sends undefined cursor, has no previous, has next", async () => {
+    const getList = makeGetList();
+    const { result } = setup(getList, { pagination: { mode: "cursor" } });
+
+    await waitFor(() => expect(result.current.tableQuery.isSuccess).toBe(true));
+
+    expect(getList.mock.calls[0][0].pagination.mode).toBe("cursor");
+    expect(lastCursor(getList)).toBeUndefined();
+    expect(result.current.hasNextPage).toBe(true);
+    expect(result.current.hasPreviousPage).toBe(false);
+    expect(result.current.pageCount).toBeUndefined();
+    expect(result.current.result.total).toBeUndefined();
+  });
+
+  it("next() moves to cursor.next and prev() returns to the previous cursor", async () => {
+    const getList = makeGetList();
+    const { result } = setup(getList, { pagination: { mode: "cursor" } });
+
+    await waitFor(() => expect(result.current.tableQuery.isSuccess).toBe(true));
+
+    act(() => {
+      result.current.next();
+    });
+    await waitFor(() => expect(result.current.result.data[0]?.id).toBe("c1"));
+    expect(lastCursor(getList)).toBe("c1");
+    expect(result.current.hasPreviousPage).toBe(true);
+
+    act(() => {
+      result.current.next();
+    });
+    await waitFor(() => expect(result.current.result.data[0]?.id).toBe("c2"));
+    expect(result.current.hasNextPage).toBe(false);
+
+    act(() => {
+      result.current.prev();
+    });
+    await waitFor(() => expect(result.current.result.data[0]?.id).toBe("c1"));
+    expect(result.current.hasNextPage).toBe(true);
+
+    act(() => {
+      result.current.prev();
+    });
+    await waitFor(() =>
+      expect(result.current.result.data[0]?.id).toBe("first"),
+    );
+    expect(result.current.hasPreviousPage).toBe(false);
+  });
+
+  it("prev() on the first page and next() without cursor.next do nothing", async () => {
+    const getList = makeGetList();
+    const { result } = setup(getList, { pagination: { mode: "cursor" } });
+
+    await waitFor(() => expect(result.current.tableQuery.isSuccess).toBe(true));
+
+    let moved: unknown;
+    act(() => {
+      moved = result.current.prev();
+    });
+    expect(moved).toBe(false);
+    expect(lastCursor(getList)).toBeUndefined();
+
+    act(() => {
+      result.current.next();
+    });
+    await waitFor(() => expect(result.current.result.data[0]?.id).toBe("c1"));
+    act(() => {
+      result.current.next();
+    });
+    await waitFor(() => expect(result.current.result.data[0]?.id).toBe("c2"));
+
+    const calls = getList.mock.calls.length;
+    act(() => {
+      moved = result.current.next();
+    });
+    expect(moved).toBe(false);
+    expect(getList.mock.calls.length).toBe(calls);
+    expect(result.current.result.data[0]?.id).toBe("c2");
+  });
+
+  it("changing filters clears the cursor history", async () => {
+    const getList = makeGetList();
+    const { result } = setup(getList, { pagination: { mode: "cursor" } });
+
+    await waitFor(() => expect(result.current.tableQuery.isSuccess).toBe(true));
+    act(() => {
+      result.current.next();
+    });
+    await waitFor(() => expect(result.current.result.data[0]?.id).toBe("c1"));
+
+    act(() => {
+      result.current.setFilters(
+        [{ field: "title", operator: "eq", value: "x" }],
+        "replace",
+      );
+    });
+    await waitFor(() =>
+      expect(result.current.result.data[0]?.id).toBe("first"),
+    );
+    expect(lastCursor(getList)).toBeUndefined();
+    expect(result.current.hasPreviousPage).toBe(false);
+  });
+
+  it("pin: offset mode keeps currentPage, pageCount and sends no cursor", async () => {
+    const getList = vi.fn().mockResolvedValue({ data: [], total: 25 });
+    const { result } = setup(getList, {
+      pagination: { mode: "server", pageSize: 10 },
+    });
+
+    await waitFor(() => expect(result.current.tableQuery.isSuccess).toBe(true));
+
+    expect(result.current.currentPage).toBe(1);
+    expect(result.current.pageCount).toBe(3);
+    expect("cursor" in getList.mock.calls[0][0].pagination).toBe(false);
+  });
+});

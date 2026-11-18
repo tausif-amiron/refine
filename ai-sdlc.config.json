@@ -77,7 +77,8 @@
       "**/test/**/*.ts",
       "**/e2e/**/*.ts"
     ],
-    "command": "TZ=UTC npx vitest run --reporter=json --outputFile={out} {files}"
+    "command": "TZ=UTC npx vitest run --reporter=json --outputFile={out} {files}",
+    "external": ["cypress/e2e/**/*.cy.ts"]
   },
   "checks": {
     "fast": [],
@@ -116,7 +117,8 @@
   },
   "mutation": {
     "fastSubset": 8,
-    "catalogue": "{workflow}/checks/mutation/catalogue.yaml"
+    "catalogue": "{workflow}/checks/mutation/catalogue.yaml",
+    "skip": ["examples/**"]
   },
   "jira": {
     "readyStatus": "To Do",

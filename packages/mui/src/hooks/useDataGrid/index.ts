@@ -178,6 +178,10 @@ export function useDataGrid<
     createLinkForSyncWithLocation,
     overtime,
     result,
+    next,
+    prev,
+    hasNextPage,
+    hasPreviousPage,
   } = useTableCore<TQueryFnData, TError, TData>({
     pagination: {
       ...pagination,
@@ -393,5 +397,9 @@ export function useDataGrid<
     createLinkForSyncWithLocation,
     overtime,
     result,
+    next,
+    prev,
+    hasNextPage,
+    hasPreviousPage,
   };
 }

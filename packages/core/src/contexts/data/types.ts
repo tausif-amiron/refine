@@ -181,9 +181,15 @@ export interface Pagination {
   pageSize?: number;
   /**
    * Whether to use server side pagination or not.
+   * `"cursor"` is server side pagination by cursor: the `cursor` param is sent
+   * to the data provider and the response returns `cursor.next` / `cursor.prev`.
    * @default "server"
    */
-  mode?: "client" | "server" | "off";
+  mode?: "client" | "server" | "off" | "cursor";
+  /**
+   * Cursor of the page to fetch in `"cursor"` mode. `undefined` fetches the first page.
+   */
+  cursor?: string;
 }
 
 export interface IQueryKeys {

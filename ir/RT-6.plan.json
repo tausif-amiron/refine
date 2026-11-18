@@ -1,0 +1,169 @@
+{
+  "contracts": [],
+  "ir_hash": "sha256:220a799d07c125b60675a62765155e304c4f251edcc43e5259bc756e9eecdea7",
+  "schema": "ai-sdlc.plan.v1",
+  "ticket": "RT-6",
+  "units": [
+    {
+      "agent": "dev-module",
+      "consumes": [],
+      "dependsOn": [],
+      "exposes": [],
+      "fingerprint": "sha256:38edd8a3042c46f3819a175dbad51b515176b2ea423defba1f8d6f5d1d92840a",
+      "id": "unit-module-core-cursor-pagination",
+      "ir": {
+        "entities": [],
+        "modules": [
+          "core-cursor-pagination"
+        ],
+        "screens": [],
+        "services": []
+      },
+      "kind": "module",
+      "model": "sonnet",
+      "name": "core-cursor-pagination",
+      "scope": [
+        ".changeset/core-cursor-pagination.md",
+        "documentation/docs/data/hooks/use-list/index.md",
+        "documentation/docs/data/hooks/use-table/index.md",
+        "owed.yaml",
+        "packages/core/src/contexts/data/types.ts",
+        "packages/core/src/definitions/helpers/handlePaginationParams/index.ts",
+        "packages/core/src/hooks/data/useList.spec.tsx",
+        "packages/core/src/hooks/data/useList.ts",
+        "packages/core/src/hooks/useTable/index.spec.ts",
+        "packages/core/src/hooks/useTable/index.ts"
+      ],
+      "slug": "core-cursor-pagination"
+    },
+    {
+      "agent": "dev-module",
+      "consumes": [],
+      "dependsOn": [
+        "unit-module-core-cursor-pagination"
+      ],
+      "exposes": [],
+      "fingerprint": "sha256:39f1bf74acc307f054f3a77cf24b12688f516e516882e98d1992667a1f2e213a",
+      "id": "unit-module-antd-cursor-pagination",
+      "ir": {
+        "entities": [],
+        "modules": [
+          "antd-cursor-pagination"
+        ],
+        "screens": [],
+        "services": []
+      },
+      "kind": "module",
+      "model": "sonnet",
+      "name": "antd-cursor-pagination",
+      "scope": [
+        ".changeset/antd-cursor-pagination.md",
+        "documentation/docs/ui-integrations/ant-design/hooks/use-table/index.md",
+        "owed.yaml",
+        "packages/antd/src/hooks/table/useTable/index.ts",
+        "packages/antd/src/hooks/table/useTable/paginationLink.tsx",
+        "packages/antd/src/hooks/table/useTable/useTable.spec.tsx",
+        "packages/antd/src/hooks/table/useTable/useTable.ts",
+        "packages/antd/src/hooks/useSimpleList/useSimpleList.ts"
+      ],
+      "slug": "antd-cursor-pagination"
+    },
+    {
+      "agent": "dev-module",
+      "consumes": [],
+      "dependsOn": [
+        "unit-module-core-cursor-pagination"
+      ],
+      "exposes": [],
+      "fingerprint": "sha256:ee41439d7e8097391edfa8ee270c731dcee631fa9b7ed6c740749b94e8788a06",
+      "id": "unit-module-simple-rest-cursor-pagination",
+      "ir": {
+        "entities": [],
+        "modules": [
+          "simple-rest-cursor-pagination"
+        ],
+        "screens": [],
+        "services": []
+      },
+      "kind": "module",
+      "model": "sonnet",
+      "name": "simple-rest-cursor-pagination",
+      "scope": [
+        ".changeset/simple-rest-cursor-pagination.md",
+        "documentation/docs/data/packages/simple-rest/index.md",
+        "owed.yaml",
+        "packages/simple-rest/src/index.ts",
+        "packages/simple-rest/src/provider.ts",
+        "packages/simple-rest/test/getList/index.mock.ts",
+        "packages/simple-rest/test/getList/index.spec.ts"
+      ],
+      "slug": "simple-rest-cursor-pagination"
+    },
+    {
+      "agent": "dev-module",
+      "consumes": [],
+      "dependsOn": [
+        "unit-module-antd-cursor-pagination",
+        "unit-module-core-cursor-pagination",
+        "unit-module-simple-rest-cursor-pagination"
+      ],
+      "exposes": [],
+      "fingerprint": "sha256:f8b0ad9e2c05be9b4b58039d720799d6ca625e8d5e9ed24ed25c08a8765bbe72",
+      "id": "unit-module-table-antd-cursor-pagination-example",
+      "ir": {
+        "entities": [],
+        "modules": [
+          "table-antd-cursor-pagination-example"
+        ],
+        "screens": [],
+        "services": []
+      },
+      "kind": "module",
+      "model": "sonnet",
+      "name": "table-antd-cursor-pagination-example",
+      "scope": [
+        "cypress/e2e/table-antd-cursor-pagination/all.cy.ts",
+        "examples/table-antd-cursor-pagination/README.md",
+        "examples/table-antd-cursor-pagination/index.html",
+        "examples/table-antd-cursor-pagination/src/**",
+        "examples/table-antd-cursor-pagination/tsconfig.json",
+        "examples/table-antd-cursor-pagination/vite.config.ts",
+        "owed.yaml"
+      ],
+      "slug": "table-antd-cursor-pagination-example"
+    },
+    {
+      "agent": "qa",
+      "consumes": [],
+      "dependsOn": [
+        "unit-module-antd-cursor-pagination",
+        "unit-module-core-cursor-pagination",
+        "unit-module-simple-rest-cursor-pagination",
+        "unit-module-table-antd-cursor-pagination-example"
+      ],
+      "exposes": [],
+      "fingerprint": "sha256:193ae7e924917fd1b3462ea438c2172833af2755a2f9a35e6065425ed4f767aa",
+      "id": "unit-walk",
+      "ir": {
+        "entities": [],
+        "modules": [
+          "antd-cursor-pagination",
+          "core-cursor-pagination",
+          "simple-rest-cursor-pagination",
+          "table-antd-cursor-pagination-example"
+        ],
+        "screens": [],
+        "services": []
+      },
+      "kind": "walk",
+      "model": "sonnet",
+      "name": "walk",
+      "scope": [
+        "packages/*/test/walk/**",
+        "examples/*/test/walk/**",
+        "owed.yaml"
+      ],
+      "slug": "walk"
+    }
+  ]
+}
