@@ -34,9 +34,38 @@ const getTotal = (headerValue: unknown, data: unknown): number => {
 const withSignal = (signal: unknown): { signal?: AbortSignal } =>
   signal ? { signal: signal as AbortSignal } : {};
 
+export type CursorResponse = { next?: string; prev?: string };
+
+export type SimpleRestCursorOptions = {
+  /** Query param that carries the cursor. @default "cursor" */
+  cursorParam?: string;
+  /** Query param that carries the page size. @default "limit" */
+  limitParam?: string;
+  /**
+   * Reads the next / prev cursors from the response.
+   * @default reads the `x-next-cursor` and `x-prev-cursor` response headers
+   */
+  getCursor?: (response: {
+    data: unknown;
+    headers?: Record<string, any>;
+  }) => CursorResponse;
+};
+
+export type SimpleRestOptions = {
+  cursor?: SimpleRestCursorOptions;
+};
+
+const defaultGetCursor: NonNullable<SimpleRestCursorOptions["getCursor"]> = ({
+  headers,
+}) => ({
+  next: headers?.["x-next-cursor"],
+  prev: headers?.["x-prev-cursor"],
+});
+
 export const dataProvider = (
   apiUrl: string,
   httpClient: AxiosInstance = axiosInstance,
+  options: SimpleRestOptions = {},
 ): Omit<
   Required<DataProvider>,
   "createMany" | "updateMany" | "deleteMany"
@@ -68,9 +97,21 @@ export const dataProvider = (
       _end?: number;
       _sort?: string;
       _order?: string;
+      [param: string]: string | number | undefined;
     } = {};
 
-    if (mode === "server") {
+    const {
+      cursorParam = "cursor",
+      limitParam = "limit",
+      getCursor = defaultGetCursor,
+    } = options.cursor ?? {};
+
+    if (mode === "cursor") {
+      if (pagination?.cursor !== undefined) {
+        query[cursorParam] = pagination.cursor;
+      }
+      query[limitParam] = pageSize;
+    } else if (mode === "server") {
       query._start = (currentPage - 1) * pageSize;
       query._end = currentPage * pageSize;
     }
@@ -91,6 +132,17 @@ export const dataProvider = (
       headers: headersFromMeta,
       ...withSignal(signal),
     });
+
+    if (mode === "cursor") {
+      return {
+        data,
+        // No total header in cursor mode means the total is unknown.
+        total: (headers?.["x-total-count"] === undefined
+          ? undefined
+          : getTotal(headers["x-total-count"], data)) as number,
+        cursor: getCursor({ data, headers }),
+      };
+    }
 
     return {
       data,
