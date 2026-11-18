@@ -117,7 +117,8 @@
   },
   "mutation": {
     "fastSubset": 8,
-    "catalogue": "{workflow}/checks/mutation/catalogue.yaml"
+    "catalogue": "{workflow}/checks/mutation/catalogue.yaml",
+    "skip": ["examples/**"]
   },
   "jira": {
     "readyStatus": "To Do",
