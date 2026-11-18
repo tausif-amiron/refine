@@ -507,6 +507,46 @@ describe("useTable Hook", () => {
       ).toContain("57");
     });
 
+    it("re-reporting the current page (nothing else changed) does not move the cursor", async () => {
+      const { result } = renderHook(
+        () => useTable({ pagination: { mode: "cursor" } }),
+        {
+          wrapper: TestWrapper({
+            routerProvider,
+            dataProvider: cursorDataProvider(),
+          }),
+        },
+      );
+
+      await waitFor(() => {
+        expect(result.current.hasNextPage).toBe(true);
+      });
+      await act(async () => {
+        result.current.next();
+      });
+      await waitFor(() => {
+        expect(result.current.tableProps.dataSource?.[0]?.id).toBe("row-2");
+      });
+
+      // The page antd reports is the one the table is on: only a higher one means next, a lower one prev.
+      // (A sort or filter change starts over from the first page in core, whatever the page.)
+      const current = (result.current.tableProps.pagination as any)?.current;
+      await act(async () => {
+        result.current.tableProps.onChange?.(
+          { current, pageSize: 10 },
+          {},
+          [],
+          { action: "paginate", currentDataSource: [] },
+        );
+      });
+
+      await waitFor(() => {
+        expect(result.current.tableProps.dataSource?.[0]?.id).toBe("row-2");
+      });
+      expect(result.current.hasPreviousPage).toBe(true);
+      expect(result.current.hasNextPage).toBe(true);
+    });
+
     it("exposes next, prev, hasNextPage and hasPreviousPage", async () => {
       const { result } = renderHook(
         () => useTable({ pagination: { mode: "cursor" } }),
