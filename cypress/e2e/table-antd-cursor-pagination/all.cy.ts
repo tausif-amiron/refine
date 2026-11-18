@@ -52,6 +52,26 @@ describe("table-antd-cursor-pagination", () => {
     );
   });
 
+  it("labels the list so the cursor mode is recognisable", () => {
+    cy.get(".ant-table-row").should("have.length", 5);
+    cy.contains("Posts (cursor pagination)").should("be.visible");
+  });
+
+  it("pin: shows prev/next only, without page-number items", () => {
+    cy.get(".ant-table-row").should("have.length", 5);
+    cy.get(".ant-pagination-item").should("not.exist");
+  });
+
+  it("pin: prev from the third page returns to the second page", () => {
+    cy.get(".ant-table-row").should("have.length", 5);
+    cy.get(".ant-pagination-next").click();
+    firstTitle().should("contain", "Post 6");
+    cy.get(".ant-pagination-next").click();
+    firstTitle().should("contain", "Post 11");
+    cy.get(".ant-pagination-prev").click();
+    firstTitle().should("contain", "Post 6");
+  });
+
   it("disables next on the last page", () => {
     cy.get(".ant-table-row").should("have.length", 5);
     for (let page = 2; page <= 5; page++) {
