@@ -126,6 +126,30 @@ dataProvider.getOne({
 controller.abort();
 ```
 
+## Cursor pagination
+
+When `getList` receives `pagination.mode: "cursor"`, it sends the cursor and the page size as query params instead of `_start` and `_end`. The `cursor` param is left out on the first page. The response `cursor.next` and `cursor.prev` values are read from the `x-next-cursor` and `x-prev-cursor` response headers. `total` is read from `x-total-count` and is `undefined` when that header is missing. Offset mode is unchanged.
+
+```
+GET /posts?cursor=abc&limit=10
+```
+
+The defaults are `cursor` for the cursor param, `limit` for the page size param, and the `x-next-cursor` / `x-prev-cursor` headers. To change them, pass a third argument when you create the data provider. Options you leave out keep their defaults.
+
+```tsx
+const dataProvider = simpleRestDataProvider(API_URL, axiosInstance, {
+  cursor: {
+    cursorParam: "after", // default: "cursor"
+    limitParam: "per_page", // default: "limit"
+    // default: reads the x-next-cursor and x-prev-cursor headers
+    getCursor: ({ data, headers }) => ({
+      next: headers?.["x-next"],
+      prev: headers?.["x-prev"],
+    }),
+  },
+});
+```
+
 ## Customizing the data provider <GuideBadge id="packages/cli/#swizzle" />
 
 In some cases, you may need to customize the data provider to work with a REST API that doesn't follow the simple-rest design. In this case, you can use the `swizzle` command to customize the data provider.
