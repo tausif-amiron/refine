@@ -78,7 +78,8 @@
         "packages/antd/src/hooks/table/useTable/paginationLink.tsx",
         "packages/antd/src/hooks/table/useTable/index.ts",
         "documentation/docs/ui-integrations/ant-design/hooks/use-table/index.md",
-        ".changeset/antd-cursor-pagination.md"
+        ".changeset/antd-cursor-pagination.md",
+        "packages/antd/src/hooks/useSimpleList/useSimpleList.ts"
       ],
       "name": "antd-cursor-pagination",
       "tests": [

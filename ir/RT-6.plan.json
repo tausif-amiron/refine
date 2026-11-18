@@ -1,6 +1,6 @@
 {
   "contracts": [],
-  "ir_hash": "sha256:72090eada1da1ae9df8bf76b92f09d8ab6f0be5b39d86024f3f5df3eb4b1af03",
+  "ir_hash": "sha256:220a799d07c125b60675a62765155e304c4f251edcc43e5259bc756e9eecdea7",
   "schema": "ai-sdlc.plan.v1",
   "ticket": "RT-6",
   "units": [
@@ -43,7 +43,7 @@
         "unit-module-core-cursor-pagination"
       ],
       "exposes": [],
-      "fingerprint": "sha256:0a907d9c704d308ac6dfe17c704bed6f16dc74ebef6d3bc28096317a29186688",
+      "fingerprint": "sha256:39f1bf74acc307f054f3a77cf24b12688f516e516882e98d1992667a1f2e213a",
       "id": "unit-module-antd-cursor-pagination",
       "ir": {
         "entities": [],
@@ -63,7 +63,8 @@
         "packages/antd/src/hooks/table/useTable/index.ts",
         "packages/antd/src/hooks/table/useTable/paginationLink.tsx",
         "packages/antd/src/hooks/table/useTable/useTable.spec.tsx",
-        "packages/antd/src/hooks/table/useTable/useTable.ts"
+        "packages/antd/src/hooks/table/useTable/useTable.ts",
+        "packages/antd/src/hooks/useSimpleList/useSimpleList.ts"
       ],
       "slug": "antd-cursor-pagination"
     },
@@ -141,7 +142,7 @@
         "unit-module-table-antd-cursor-pagination-example"
       ],
       "exposes": [],
-      "fingerprint": "sha256:b5101a73edc2e5acb000edf18544c11817a72959a5fe3dfa7925f09434d4896f",
+      "fingerprint": "sha256:193ae7e924917fd1b3462ea438c2172833af2755a2f9a35e6065425ed4f767aa",
       "id": "unit-walk",
       "ir": {
         "entities": [],
