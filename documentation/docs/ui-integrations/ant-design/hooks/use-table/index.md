@@ -55,7 +55,26 @@ const { tableProps } = useTable<IPost>();
 
 By default, pagination happens on the server side. If you want to do pagination handling on the client side, you can pass the pagination.mode property and set it to "client". Also, you can disable the pagination by setting the "off".
 
+If your API paginates by cursor, set `pagination.mode` to `"cursor"`. See [cursor pagination](#cursor-pagination).
+
 :::
+
+### Cursor pagination
+
+With `pagination.mode: "cursor"`, the data provider's `getList` receives the current cursor in `pagination.cursor` (`undefined` on the first page) and returns `cursor.next` / `cursor.prev`. `tableProps.pagination` then renders only previous and next controls, without numbered page links:
+
+- The next control calls `next()` and is disabled when the response has no `cursor.next`.
+- The previous control calls `prev()` and is disabled on the first page.
+- The total is shown only when the data provider returns one. `pageCount` is `undefined`.
+- Changing filters, sorters or `pageSize` goes back to the first page. With `syncWithLocation`, the cursor is not written to the URL.
+
+```tsx
+const { tableProps, next, prev, hasNextPage, hasPreviousPage } = useTable({
+  pagination: { mode: "cursor", pageSize: 20 },
+});
+
+<Table {...tableProps} rowKey="id" />;
+```
 
 ## Sorting
 
@@ -277,11 +296,12 @@ useTable({
 
 ### pagination.mode
 
-It can be `"off"`, `"server"` or `"client"`. It is set to `"server"` by default.
+It can be `"off"`, `"server"`, `"client"` or `"cursor"`. It is set to `"server"` by default.
 
 - **"off":** Pagination is disabled. All records will be fetched.
 - **"client":** Pagination is done on the client side. All records will be fetched and then the records will be paginated on the client side.
 - **"server":**: Pagination is done on the server side. Records will be fetched by using the `currentPage` and `pageSize` values.
+- **"cursor":** Pagination is done on the server side by cursor. Records will be fetched by using the `cursor` and `pageSize` values, and the table shows only previous and next controls. See [cursor pagination](#cursor-pagination).
 
 ```tsx
 useTable({
@@ -730,7 +750,15 @@ React.Dispatch<React.SetStateAction<number>> | undefined;
 
 ### pageCount
 
-`pageCount` is the total page count state. If pagination is disabled, it will be `undefined`.
+`pageCount` is the total page count state. If pagination is disabled or in `"cursor"` mode, it will be `undefined`.
+
+### next and prev
+
+`next()` goes to the page at `cursor.next` and `prev()` goes back to the previous cursor. Each returns `false` and does nothing when that direction is unavailable. They only apply in `"cursor"` mode.
+
+### hasNextPage and hasPreviousPage
+
+Booleans that tell whether `next()` and `prev()` can move. They are always `false` outside `"cursor"` mode.
 
 ### createLinkForSyncWithLocation
 

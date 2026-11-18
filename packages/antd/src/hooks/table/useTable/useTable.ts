@@ -94,6 +94,10 @@ export const useTable = <
     pageCount,
     overtime,
     result,
+    next,
+    prev,
+    hasNextPage,
+    hasPreviousPage,
   } = useTableCore<TQueryFnData, TError, TData>({
     pagination: paginationFromProp,
     filters: filtersFromProp,
@@ -119,6 +123,10 @@ export const useTable = <
   const liveMode = useLiveMode(liveModeFromProp);
 
   const isPaginationEnabled = paginationFromProp?.mode !== "off";
+  const isCursorMode = paginationFromProp?.mode === "cursor";
+  // In cursor mode antd sees at most three pages (previous, current, next),
+  // so its prev/next buttons are enabled exactly when core can move that way.
+  const cursorPosition = hasPreviousPage ? 2 : 1;
 
   const preferredInitialFilters = filtersFromProp?.initial;
 
@@ -172,7 +180,11 @@ export const useTable = <
       setSorters(crudSorting);
     }
 
-    if (isPaginationEnabled) {
+    if (isCursorMode) {
+      const requestedPosition = paginationState.current ?? cursorPosition;
+      if (requestedPosition > cursorPosition) next();
+      if (requestedPosition < cursorPosition) prev();
+    } else if (isPaginationEnabled) {
       setCurrentPage?.(paginationState.current || 1);
       setPageSize?.(paginationState.pageSize || 10);
     }
@@ -190,6 +202,19 @@ export const useTable = <
   };
 
   const antdPagination = (): false | TablePaginationConfig => {
+    if (isCursorMode) {
+      const total = data?.total;
+      return {
+        itemRender: (_page, type, element) =>
+          type === "prev" || type === "next" ? element : null,
+        pageSize,
+        current: cursorPosition,
+        total: (cursorPosition + (hasNextPage ? 1 : 0)) * pageSize,
+        showTotal: total !== undefined ? () => total : undefined,
+        position: !breakpoint.sm ? ["bottomCenter"] : ["bottomRight"],
+      };
+    }
+
     if (isPaginationEnabled) {
       return {
         itemRender: (page, type, element) => {
@@ -266,5 +291,9 @@ export const useTable = <
     createLinkForSyncWithLocation,
     overtime,
     result,
+    next,
+    prev,
+    hasNextPage,
+    hasPreviousPage,
   };
 };
