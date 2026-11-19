@@ -2,7 +2,26 @@ import axios from "axios";
 import nock from "nock";
 
 import JsonServer from "../../src/index";
-import { API, mockCreate, mockCreateFailure } from "./index.mock";
+
+const API = "https://api.fake-rest.refine.dev";
+
+type Opts = { reqheaders?: Record<string, string> };
+
+/** json-server style: POST /posts echoes the body with an id. */
+const mockCreate = (
+  body: Record<string, unknown>,
+  id: number,
+  method: "post" | "patch" | "put" = "post",
+  opts: Opts = {},
+) =>
+  nock(API, opts.reqheaders ? { reqheaders: opts.reqheaders } : {})
+    [method]("/posts", body as any)
+    .reply(201, { id, ...body });
+
+const mockCreateFailure = (body: Record<string, unknown>) =>
+  nock(API)
+    .post("/posts", body as any)
+    .reply(500, { message: "boom" });
 
 const provider = () => JsonServer(API, axios);
 

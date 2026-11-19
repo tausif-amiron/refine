@@ -2,7 +2,31 @@ import axios from "axios";
 import nock from "nock";
 
 import JsonServer from "../../src/index";
-import { API, mockDelete, mockDeleteFailure } from "./index.mock";
+
+const API = "https://api.fake-rest.refine.dev";
+
+type Opts = { reqheaders?: Record<string, string>; body?: unknown };
+
+/** json-server style: DELETE /posts/:id replies with the deleted record. */
+const mockDelete = (
+  id: number,
+  method: "delete" | "post" | "put" | "patch" = "delete",
+  opts: Opts = {},
+) => {
+  const scope = nock(
+    API,
+    opts.reqheaders ? { reqheaders: opts.reqheaders } : {},
+  );
+  const path = `/posts/${id}`;
+  const interceptor =
+    opts.body !== undefined
+      ? scope[method](path, opts.body as any)
+      : scope[method](path);
+  return interceptor.reply(200, { id });
+};
+
+const mockDeleteFailure = (id: number, status = 500) =>
+  nock(API).delete(`/posts/${id}`).reply(status, { message: "fail" });
 
 const provider = () => JsonServer(API, axios);
 
