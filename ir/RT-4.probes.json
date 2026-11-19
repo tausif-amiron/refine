@@ -1,0 +1,32 @@
+{
+  "probes": [
+    {
+      "ask": "As a new user, check: Provider return type no longer omits these methods. Record exactly what the product shows.",
+      "criterion": "AC-1",
+      "id": "P-1"
+    },
+    {
+      "ask": "As a new user, check: useCreateMany / useUpdateMany / useDeleteMany work against json-server. Record exactly what the product shows.",
+      "criterion": "AC-2",
+      "id": "P-2"
+    },
+    {
+      "ask": "As a new user, check: Tests for each method, including one partial-failure case. Record exactly what the product shows.",
+      "criterion": "AC-3",
+      "id": "P-3"
+    },
+    {
+      "ask": "As a new user, check: simple-rest docs page under documentation/ updated. Record exactly what the product shows.",
+      "criterion": "AC-4",
+      "id": "P-4"
+    },
+    {
+      "ask": "As a new user, check: Changeset added (minor). Record exactly what the product shows.",
+      "criterion": "AC-5",
+      "id": "P-5"
+    }
+  ],
+  "schema": "ai-sdlc.probes.v1",
+  "sealed_hash": "sha256:970ba39128b543181e939162f35aa92f33a50e10c8fd4eeef927bf03a5337ffd",
+  "ticket": "RT-4"
+}
