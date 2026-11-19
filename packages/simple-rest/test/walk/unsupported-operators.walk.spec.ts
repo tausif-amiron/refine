@@ -26,18 +26,15 @@ const unsupported = [
   "nin",
   "ina",
   "nina",
-  "ncontains",
   "containss",
   "ncontainss",
   "between",
   "nbetween",
   "null",
   "nnull",
-  "startswith",
   "nstartswith",
   "startswiths",
   "nstartswiths",
-  "endswith",
   "nendswith",
   "endswiths",
   "nendswiths",
@@ -48,6 +45,16 @@ describe("walk RT-1: unsupported filter operators (public API)", () => {
     expect(
       generateFilter([{ field: "price", operator: op as any, value: 10 }]),
     ).toEqual({ [key]: 10 });
+  });
+
+  it.each([
+    ["startswith", "^foo"],
+    ["endswith", "foo$"],
+    ["ncontains", "^(?!.*foo).*$"],
+  ])("RT-5: %s maps to price_like=%s", (op, value) => {
+    expect(
+      generateFilter([{ field: "price", operator: op as any, value: "foo" }]),
+    ).toEqual({ price_like: value });
   });
 
   it.each(unsupported)("AC-1/AC-3: %s throws the descriptive error", (op) => {

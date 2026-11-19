@@ -1,0 +1,66 @@
+{
+  "contracts": [],
+  "ir_hash": "sha256:389594aa5121ca504d18472ca58d56e2d1e5b8726bef89fde2effc13851106dc",
+  "schema": "ai-sdlc.plan.v1",
+  "ticket": "RT-5",
+  "units": [
+    {
+      "agent": "dev-module",
+      "consumes": [],
+      "dependsOn": [],
+      "exposes": [],
+      "fingerprint": "sha256:c843b38a638c431f085e390f033de9826614d898dc97c79316f47d3527a7fc9e",
+      "id": "unit-module-simple-rest-extra-filter-operators",
+      "ir": {
+        "entities": [],
+        "modules": [
+          "simple-rest extra filter operators"
+        ],
+        "screens": [],
+        "services": []
+      },
+      "kind": "module",
+      "model": "sonnet",
+      "name": "simple-rest extra filter operators",
+      "scope": [
+        ".changeset/simple-rest-more-filter-operators.md",
+        "documentation/docs/data/packages/simple-rest/index.md",
+        "owed.yaml",
+        "packages/simple-rest/src/utils/generateFilter.ts",
+        "packages/simple-rest/src/utils/mapOperator.ts",
+        "packages/simple-rest/test/getList/index.spec.ts",
+        "packages/simple-rest/test/utils/generateFilter.spec.ts",
+        "packages/simple-rest/test/utils/mapOperator.spec.ts",
+        "packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts"
+      ],
+      "slug": "simple-rest-extra-filter-operators"
+    },
+    {
+      "agent": "qa",
+      "consumes": [],
+      "dependsOn": [
+        "unit-module-simple-rest-extra-filter-operators"
+      ],
+      "exposes": [],
+      "fingerprint": "sha256:be97561d34dc25b0d3cd4f2e3289c523456f9800c5d6936955e8524862b8aae9",
+      "id": "unit-walk",
+      "ir": {
+        "entities": [],
+        "modules": [
+          "simple-rest extra filter operators"
+        ],
+        "screens": [],
+        "services": []
+      },
+      "kind": "walk",
+      "model": "sonnet",
+      "name": "walk",
+      "scope": [
+        "packages/*/test/walk/**",
+        "examples/*/test/walk/**",
+        "owed.yaml"
+      ],
+      "slug": "walk"
+    }
+  ]
+}

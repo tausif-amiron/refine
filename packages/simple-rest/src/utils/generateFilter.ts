@@ -8,7 +8,13 @@ const supportedOperators: string[] = [
   "gte",
   "lte",
   "contains",
+  "startswith",
+  "endswith",
+  "ncontains",
 ];
+
+const escapeRegex = (text: string) =>
+  text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const unsupportedMessage = (operator: string) =>
   `[@refinedev/simple-rest]: \`operator: ${operator}\` is not supported. You can create custom data provider. https://refine.dev/docs/api-reference/core/providers/data-provider/#creating-a-data-provider`;
@@ -36,6 +42,27 @@ export const generateFilter = (filters?: CrudFilters) => {
           !supportedOperators.includes(operator)
         ) {
           throw new Error(unsupportedMessage(operator));
+        }
+
+        if (
+          operator === "startswith" ||
+          operator === "endswith" ||
+          operator === "ncontains"
+        ) {
+          const key = `${field}_like`;
+          if (key in queryFilters) {
+            throw new Error(
+              `[@refinedev/simple-rest]: \`operator: ${operator}\` cannot be combined with another \`${key}\` filter on the same field.`,
+            );
+          }
+          const escaped = escapeRegex(String(value));
+          queryFilters[key] =
+            operator === "startswith"
+              ? `^${escaped}`
+              : operator === "endswith"
+                ? `${escaped}$`
+                : `^(?!.*${escaped}).*$`;
+          return;
         }
 
         const mappedOperator = mapOperator(operator);

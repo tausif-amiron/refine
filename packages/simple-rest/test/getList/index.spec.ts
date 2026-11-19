@@ -106,6 +106,54 @@ describe("getList", () => {
   });
 });
 
+describe("getList filter operators", () => {
+  const run = async (filters: any[]) => {
+    const get = vi.fn().mockResolvedValue({ data: [], headers: {} });
+    const provider = JsonServer("https://api.example.test", { get } as any);
+    await provider.getList({ resource: "posts", filters });
+    return get.mock.calls[0][0] as string;
+  };
+
+  it("pin: in sends repeated params without _in suffix or commas", async () => {
+    const url = await run([{ field: "id", operator: "in", value: [1, 2] }]);
+    expect(url).toContain("id=1&id=2");
+    expect(url).not.toContain("id_in");
+    expect(url).not.toContain("id=1,2");
+    expect(url).not.toContain("id=1%2C2");
+  });
+
+  it("pin: in with an empty array sends no param", async () => {
+    const url = await run([{ field: "id", operator: "in", value: [] }]);
+    expect(url).not.toContain("id=");
+  });
+
+  it("pin: in with a scalar sends field=value", async () => {
+    const url = await run([{ field: "id", operator: "in", value: 3 }]);
+    expect(url).toContain("id=3");
+  });
+
+  it("startswith requests title_like=^foo", async () => {
+    const url = await run([
+      { field: "title", operator: "startswith", value: "foo" },
+    ]);
+    expect(url).toContain("title_like=%5Efoo");
+  });
+
+  it("endswith requests title_like=foo$", async () => {
+    const url = await run([
+      { field: "title", operator: "endswith", value: "foo" },
+    ]);
+    expect(url).toContain("title_like=foo%24");
+  });
+
+  it("ncontains requests the negative-lookahead regex", async () => {
+    const url = await run([
+      { field: "title", operator: "ncontains", value: "foo" },
+    ]);
+    expect(decodeURIComponent(url)).toContain("title_like=^(?!.*foo).*$");
+  });
+});
+
 describe("getList total from x-total-count", () => {
   const apiUrl = "https://api.fake-rest.refine.dev";
   const rows = [{ id: 1 }, { id: 2 }, { id: 3 }];
