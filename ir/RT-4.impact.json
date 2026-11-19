@@ -1,0 +1,12 @@
+{
+  "changes_hash": "sha256:04174c7d58617c817fbc5f42253c5f62526eef6f4950bb6d4cb288eddbb092f0",
+  "checked": [
+    "packages/live-previews",
+    "packages/refine-ui",
+    "packages/simple-rest"
+  ],
+  "files": [],
+  "schema": "ai-sdlc.impact.v1",
+  "status": "done",
+  "ticket": "RT-4"
+}

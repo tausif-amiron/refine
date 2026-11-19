@@ -1,0 +1,67 @@
+{
+  "contracts": [],
+  "ir_hash": "sha256:3f53bef9f42590756c25e9d3bd3e503374b2a2eac7a81acd7b27af410ed4f6b0",
+  "schema": "ai-sdlc.plan.v1",
+  "ticket": "RT-4",
+  "units": [
+    {
+      "agent": "dev-module",
+      "consumes": [],
+      "dependsOn": [],
+      "exposes": [],
+      "fingerprint": "sha256:e32cb9843f7f1e4774159e92e7dbad898e190ca8e8a7fad54b7df2c7f2750826",
+      "id": "unit-module-simple-rest-bulk-methods",
+      "ir": {
+        "entities": [],
+        "modules": [
+          "simple-rest bulk methods"
+        ],
+        "screens": [],
+        "services": []
+      },
+      "kind": "module",
+      "model": "sonnet",
+      "name": "simple-rest bulk methods",
+      "scope": [
+        ".changeset/simple-rest-bulk-methods.md",
+        "documentation/docs/data/packages/simple-rest/index.md",
+        "owed.yaml",
+        "packages/simple-rest/src/provider.ts",
+        "packages/simple-rest/test/createMany/index.mock.ts",
+        "packages/simple-rest/test/createMany/index.spec.ts",
+        "packages/simple-rest/test/deleteMany/index.mock.ts",
+        "packages/simple-rest/test/deleteMany/index.spec.ts",
+        "packages/simple-rest/test/updateMany/index.mock.ts",
+        "packages/simple-rest/test/updateMany/index.spec.ts"
+      ],
+      "slug": "simple-rest-bulk-methods"
+    },
+    {
+      "agent": "qa",
+      "consumes": [],
+      "dependsOn": [
+        "unit-module-simple-rest-bulk-methods"
+      ],
+      "exposes": [],
+      "fingerprint": "sha256:73e02b1d9f769cb3adde88053a8c2519ac356987c9e862f3b8d446972cbee63c",
+      "id": "unit-walk",
+      "ir": {
+        "entities": [],
+        "modules": [
+          "simple-rest bulk methods"
+        ],
+        "screens": [],
+        "services": []
+      },
+      "kind": "walk",
+      "model": "sonnet",
+      "name": "walk",
+      "scope": [
+        "packages/*/test/walk/**",
+        "examples/*/test/walk/**",
+        "owed.yaml"
+      ],
+      "slug": "walk"
+    }
+  ]
+}
