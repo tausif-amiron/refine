@@ -38,6 +38,10 @@ describe("mapOperator", () => {
     }
   });
 
+  it("pin: mapOperator('eq') returns an empty string", () => {
+    expect(mapOperator("eq")).toBe("");
+  });
+
   it.each(["unsupported", "", undefined, null])(
     "should return empty string for %s operator ",
     (operator) => {
