@@ -1,14 +1,4 @@
 # Open hand-offs between units. Schema: docs/CONVENTIONS.md#owed-yaml
 # The loop fails a provider while an entry addressed to it is open,
 # and holds a consumer (blocked) until the entries it opened are closed.
-- kind: scope
-  to: person
-  files:
-    - packages/simple-rest/vitest.config.mts
-    - ai-sdlc.config.json
-  note: >-
-    The seen-red check fails because packages/simple-rest/test/{createMany,updateMany,deleteMany}/index.mock.ts
-    match the tests.globs (**/test/**/*.ts) but hold only nock helpers and no tests. Vitest's default include
-    (*.test/*.spec) never runs them, and I cannot edit vitest.config.mts. Either exclude *.mock.ts from
-    tests.globs in ai-sdlc.config.json (the existing mocks are in the same position), or add them to
-    tests.external. The specs that import these mocks do run.
+[]
