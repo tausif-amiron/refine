@@ -1,0 +1,318 @@
+{
+  "questions": [
+    {
+      "options": [
+        {
+          "answer": "Target json-server 0.x only. Map startswith, endswith and ncontains to `<field>_like` regexes. The docs table states that the mappings assume json-server 0.x `_like` (a case-insensitive JS regex), and that 1.x users need a custom provider.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/simple-rest/src/utils/mapOperator.ts:5",
+            "packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts:12",
+            "packages/simple-rest/README.md:38",
+            "documentation/docs/data/packages/simple-rest/index.md:10",
+            "https://github.com/typicode/json-server/blob/v0.17.4/src/server/router/plural.js"
+          ],
+          "if_wrong": "Users on json-server 1.x get `_like` params that are ignored, so the new filters are silently dropped. That is already true for `contains` today, so it is not a new failure, but the new operators widen it.",
+          "why": "The existing mappings already use 0.x syntax: `_ne`, `_gte`, `_lte` and `_like` (packages/simple-rest/src/utils/mapOperator.ts:5-10), and the RT-1 walk test pins `contains` to `price_like` (packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts:18). Choosing 1.x would break the current `contains` mapping too. Note: the repo does not pin a json-server version. The docs and README only say 'built on the foundation of json-server', with no version."
+        },
+        {
+          "answer": "Target json-server 1.x syntax for the new operators and leave the existing mappings on 0.x syntax.",
+          "confidence": "low",
+          "evidence": [
+            "packages/simple-rest/src/utils/mapOperator.ts:5"
+          ],
+          "if_wrong": "Against json-server 0.x, the new operators send params the server ignores, so results are unfiltered with no error.",
+          "why": "Nothing in the repo points to 1.x. Mixing syntaxes would make one provider half-work against either server version, because `_ne`/`_gte`/`_lte`/`_like` in packages/simple-rest/src/utils/mapOperator.ts:5-10 are 0.x forms."
+        },
+        {
+          "answer": "Do not commit to any server version. Throw the unsupported error for startswith, endswith and ncontains, and add only `in`, which is already accepted.",
+          "confidence": "low",
+          "evidence": [
+            "packages/simple-rest/src/utils/generateFilter.ts:4"
+          ],
+          "if_wrong": "The feature is not delivered, and the acceptance criteria 'tests for each operator' and the support table describe mostly throws.",
+          "why": "This is the safest option if the version is unknown, but it does not deliver the ticket's scope. `in` is already in supportedOperators (packages/simple-rest/src/utils/generateFilter.ts:6), so the ticket would add almost nothing."
+        }
+      ],
+      "prompt": "Which json-server version should the new mappings target? simple-rest is documented against json-server 0.x (where `_like` is a case-insensitive regex and `_ne/_gte/_lte` are suffixes). json-server 1.x dropped `_like` and uses a different operator syntax. Should the mappings assume 0.x only?",
+      "question": "Q-1",
+      "recommended": 0
+    },
+    {
+      "options": [
+        {
+          "answer": "Regex-escape the value for the new operators only. startswith 'a.b' sends title_like=^a\\.b, and endswith sends `<escaped>$`. contains stays raw, as today. The docs table notes that contains takes a regex while the others match literally.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/simple-rest/src/utils/generateFilter.ts:42",
+            "packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts:104"
+          ],
+          "if_wrong": "Users who expect regex in startswith/endswith (as in contains) get literal matching instead. That is a documented inconsistency, not silent data loss.",
+          "why": "generateFilter passes the value through unchanged (packages/simple-rest/src/utils/generateFilter.ts:42), and the RT-1 walk pins `title_like=x` for contains (packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts:111-116). Escaping contains would change released behaviour in a minor release. The new operators have no users yet, so they can use the correct semantics."
+        },
+        {
+          "answer": "Regex-escape the value for every `_like` operator, contains included.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/simple-rest/src/utils/generateFilter.ts:42"
+          ],
+          "if_wrong": "Apps that pass regex through contains (for example 'foo|bar') silently stop matching after a minor upgrade.",
+          "why": "This is consistent, and it fixes 'c++' and '(draft)' for contains too. But it changes what contains matches today (packages/simple-rest/src/utils/generateFilter.ts:42), and the ticket asks for a minor release that adds operators, not one that changes contains."
+        },
+        {
+          "answer": "Do not escape anything. Wrap the raw value: ^value for startswith, value$ for endswith.",
+          "confidence": "low",
+          "evidence": [
+            "packages/simple-rest/src/utils/generateFilter.ts:42",
+            "documentation/docs/core/interface-references/index.md:64"
+          ],
+          "if_wrong": "Values containing . * + ? ( ) [ ] give wrong matches. An invalid pattern such as 'c++' or '(' makes json-server's `new RegExp` throw, which returns a server error.",
+          "why": "This matches how contains handles values today (packages/simple-rest/src/utils/generateFilter.ts:42), so the code stays uniform. But refine documents startswith as 'Starts with' (documentation/docs/core/interface-references/index.md:64), not as a regex."
+        }
+      ],
+      "prompt": "Should the user's value be regex-escaped before it is wrapped for startswith, endswith and ncontains? For example, should startswith \"a.b\" send title_like=^a\\.b or title_like=^a.b? And should contains keep passing the raw value as it does today, even though that is inconsistent?",
+      "question": "Q-2",
+      "recommended": 0
+    },
+    {
+      "options": [
+        {
+          "answer": "Map ncontains to `<field>_like=^(?!.*<escaped value>).*$` and list it as supported for json-server 0.x.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts:29",
+            "https://github.com/typicode/json-server/blob/v0.17.4/src/server/router/plural.js"
+          ],
+          "if_wrong": "A backend that only looks like json-server and uses another regex engine (or none) returns wrong rows silently instead of throwing.",
+          "why": "json-server 0.x evaluates `_like` with JavaScript RegExp (my reading of the v0.17.4 source, not verified in this repo), and JS supports lookahead. Today ncontains throws (packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts:29), so mapping it removes a throw and does not change any working behaviour."
+        },
+        {
+          "answer": "Keep ncontains throwing the standard unsupported error and list it as unsupported in the docs table.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/simple-rest/src/utils/generateFilter.ts:33",
+            "packages/simple-rest/test/utils/generateFilter.spec.ts:113"
+          ],
+          "if_wrong": "Apps lose a filter that works on stock json-server 0.x, and the ticket's explicit scope item is not delivered.",
+          "why": "json-server has no native 'not like' param. The RT-1 guarantee is to throw rather than send something that might be misread (packages/simple-rest/src/utils/generateFilter.ts:33-39). This needs no change to the RT-1 list for ncontains."
+        }
+      ],
+      "prompt": "For ncontains, should we use a negative-lookahead regex in _like (for example ^(?!.*foo).*$), or throw the unsupported error because json-server has no native 'not like' operator?",
+      "question": "Q-3",
+      "recommended": 0
+    },
+    {
+      "options": [
+        {
+          "answer": "null and nnull keep throwing the standard unsupported error. The docs table lists them as unsupported, with a note to use a custom data provider.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts:34",
+            "packages/simple-rest/src/utils/generateFilter.ts:13"
+          ],
+          "if_wrong": "If a reliable mapping exists, users lose a filter that could have worked. Adding it later is a non-breaking minor change.",
+          "why": "The ticket allows throwing when a mapping isn't feasible. Both operators already throw and are pinned in packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts:34-35 and packages/simple-rest/test/utils/generateFilter.spec.ts. As far as I know, json-server 0.x compares query values as strings (from memory, not verified here), so field=null would not mean 'is null'."
+        },
+        {
+          "answer": "Map null to `field=null` and nnull to `field_ne=null`.",
+          "confidence": "low",
+          "evidence": [
+            "packages/simple-rest/src/utils/generateFilter.ts:42",
+            "https://github.com/typicode/json-server/blob/v0.17.4/src/server/router/plural.js"
+          ],
+          "if_wrong": "Filters silently return no rows or wrong rows. This is the silent-failure class RT-1 removed.",
+          "why": "This is simple, but json-server matches query strings against stringified field values. It would match fields holding the string 'null', and how it treats real null or missing fields is not settled by this repo."
+        }
+      ],
+      "prompt": "The ticket says null / nnull need a feasibility check. json-server 0.x has no documented way to filter on null or missing fields. Should null and nnull throw the standard unsupported error? Or is there an accepted mapping, for example field=null, or field_ne= with an empty value?",
+      "question": "Q-4",
+      "recommended": 0
+    },
+    {
+      "options": [
+        {
+          "answer": "In generateFilter, throw a clear error when a new operator (startswith, endswith or ncontains) would write a `<field>_like` key that is already set. Keep today's last-wins behaviour for repeated contains on one field.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/simple-rest/src/utils/generateFilter.ts:17",
+            "packages/simple-rest/src/utils/generateFilter.ts:42"
+          ],
+          "if_wrong": "A table that combines contains with startswith on one field now errors instead of returning results. That is visible, but it can break a UI that worked before when it used only contains.",
+          "why": "queryFilters is a plain object and each write replaces the key (packages/simple-rest/src/utils/generateFilter.ts:17,42). Before this ticket only contains could produce `_like`, so throwing only when a new operator collides changes no existing behaviour. Repeated params do not help: in json-server 0.x, repeated values are ORed (from memory), not ANDed."
+        },
+        {
+          "answer": "Throw on any collision of the same query key, contains-plus-contains included.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/simple-rest/src/utils/generateFilter.ts:42"
+          ],
+          "if_wrong": "Existing apps with two contains filters on one field start throwing after a minor upgrade.",
+          "why": "This removes every silent overwrite at packages/simple-rest/src/utils/generateFilter.ts:42, but it changes current behaviour: two contains filters on one field return results today (last wins)."
+        },
+        {
+          "answer": "Combine all `_like` filters on one field into a single regex using lookaheads, for example ^(?=.*foo)(?=x).*$.",
+          "confidence": "low",
+          "evidence": [
+            "packages/simple-rest/src/utils/generateFilter.ts:42",
+            "packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts:104"
+          ],
+          "if_wrong": "If raw contains values are regex fragments, combining them produces broken or unexpected patterns, and the server either errors or returns wrong rows.",
+          "why": "This gives correct AND semantics on JS-regex json-server, but it is the most complex option. It also changes what contains sends when it is combined with another operator, which the RT-1 pins do not cover (packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts:104-117)."
+        },
+        {
+          "answer": "Send repeated `_like` params, for example title_like=a&title_like=^b.",
+          "confidence": "low",
+          "evidence": [
+            "packages/simple-rest/src/provider.ts:125"
+          ],
+          "if_wrong": "Users get more rows than either filter allows, silently.",
+          "why": "This is easy with query-string arrays (packages/simple-rest/src/provider.ts:125), but json-server 0.x treats repeated values as OR (from memory, not verified here), so filters would widen instead of narrowing."
+        }
+      ],
+      "prompt": "Several operators now share the `<field>_like` key (contains, startswith, endswith, ncontains). generateFilter returns a plain object, so two such filters on the same field overwrite each other, and only the last one is sent. Should a second `_like` filter on the same field throw, be combined into one regex, or be sent as repeated _like params?",
+      "question": "Q-5",
+      "recommended": 0
+    },
+    {
+      "options": [
+        {
+          "answer": "startswith and endswith are case-insensitive, which is what json-server 0.x `_like` does natively. Keep startswiths, endswiths, containss, nstartswith, nendswith and their -s variants throwing, and list them as unsupported.",
+          "confidence": "medium",
+          "evidence": [
+            "documentation/docs/core/interface-references/index.md:64",
+            "packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts:30"
+          ],
+          "if_wrong": "If the target server's `_like` is case-sensitive, startswith/endswith match fewer rows than refine's semantics promise.",
+          "why": "refine marks the -s variants as case sensitive and the plain ones as not (documentation/docs/core/interface-references/index.md:56-71). json-server's `_like` applies the 'i' flag (from memory), so case-sensitive matching cannot be expressed. The ticket names only startswith, endswith and ncontains, so the rest stay pinned as throwing (packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts:30-43)."
+        },
+        {
+          "answer": "Also add nstartswith and nendswith with negative-lookahead regexes such as ^(?!<escaped>) and ^(?!.*<escaped>$). Keep every case-sensitive -s variant throwing.",
+          "confidence": "low",
+          "evidence": [
+            "documentation/docs/core/interface-references/index.md:65",
+            "packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts:37"
+          ],
+          "if_wrong": "Scope creep: more operators to test, document and support, beyond what the ticket accepted.",
+          "why": "These use the same mechanism as ncontains, but the ticket does not list them, so they widen the minor release. The case-sensitive variants still cannot be expressed with a case-insensitive `_like`."
+        }
+      ],
+      "prompt": "Should the json-server _like regex for startswith/endswith be case-insensitive, matching refine's startswith/endswith semantics, or case-sensitive? Should the case-sensitive variants (startswiths, endswiths, containss) and the negated forms (nstartswith, nendswith and their -s variants) also be added, or keep throwing?",
+      "question": "Q-6",
+      "recommended": 0
+    },
+    {
+      "options": [
+        {
+          "answer": "Leave mapOperator unchanged: it returns '' for startswith, endswith and ncontains. Put the new `_like` key and regex construction in generateFilter.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/simple-rest/src/utils/mapOperator.ts:3",
+            "packages/simple-rest/src/index.ts:12",
+            "packages/simple-rest/refine.config.js:27",
+            "packages/simple-rest/test/utils/mapOperator.spec.ts:15"
+          ],
+          "if_wrong": "External callers of mapOperator still turn startswith into an equality key. That is unchanged from today, and the docs should say generateFilter is the supported path.",
+          "why": "mapOperator is publicly exported (packages/simple-rest/src/utils/index.ts:1, packages/simple-rest/src/index.ts:12) and copied into user code by swizzle (packages/simple-rest/refine.config.js:27). Its spec pins '' for these operators (packages/simple-rest/test/utils/mapOperator.spec.ts:15,20,31). Leaving it unchanged keeps the public API and that spec green."
+        },
+        {
+          "answer": "Change mapOperator to return '_like' for startswith, endswith and ncontains, and have generateFilter build the regex value.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/simple-rest/test/utils/mapOperator.spec.ts:6",
+            "packages/simple-rest/src/utils/index.ts:1"
+          ],
+          "if_wrong": "Custom providers using mapOperator without the regex transform send startswith as a plain contains filter (title_like=foo), which over-matches silently.",
+          "why": "This keeps the key mapping in one place. But it changes a public function's output, edits pinned assertions in packages/simple-rest/test/utils/mapOperator.spec.ts, and swizzled copies drift from it."
+        }
+      ],
+      "prompt": "Should mapOperator (publicly exported from @refinedev/simple-rest) return the new suffix (\"_like\") for startswith, endswith and ncontains, while generateFilter builds the regex value? Or should mapOperator stay as it is (returning \"\" for these) and all new logic live in generateFilter?",
+      "question": "Q-7",
+      "recommended": 0
+    },
+    {
+      "options": [
+        {
+          "answer": "Let RT-5's unit edit packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts and packages/simple-rest/test/utils/generateFilter.spec.ts. Move only the operators that are now supported from the unsupported list to the mapped list. Keep the gt/lt, or/and, q-exemption and getList-rejects-gt tests unchanged. Declare both files in the brief's SCOPE.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts:21",
+            "packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts:65",
+            "packages/simple-rest/test/utils/generateFilter.spec.ts:113"
+          ],
+          "if_wrong": "If the RT-1 walk is meant to stay frozen, as QA's artifact, the edit goes against the workflow and a reviewer may reject it. RT-1 coverage stays intact either way.",
+          "why": "Both files pin ncontains, startswith, endswith, null and nnull as throwing (walk spec :29-43; generateFilter.spec around :90-106), so any mapping turns them red. Editing the lists keeps RT-1's core guarantees (walk spec :65-73, :119-129). There is no brief.json yet, so SCOPE has not been set."
+        },
+        {
+          "answer": "Leave the RT-1 walk file untouched. Have RT-5's walk unit write a new walk spec for the new operators, and record the needed list change to the RT-1 file as an owed.yaml entry.",
+          "confidence": "low",
+          "evidence": [
+            "docs/TESTING.md:61",
+            "owed.yaml:1",
+            "packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts:53"
+          ],
+          "if_wrong": "The suite is red, and the loop blocks or fails the unit until someone resolves the owed entry.",
+          "why": "Walk specs are QA's output (docs/TESTING.md:61-67), and CLAUDE.md says out-of-scope changes go to owed.yaml (owed.yaml:1-4 is empty). But the RT-1 file still asserts these operators throw, so it would go red until the owed entry is closed."
+        }
+      ],
+      "prompt": "The RT-1 walk test packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts asserts that ncontains, startswith, endswith, null and nnull throw. May this ticket's unit edit that walk test to move newly supported operators to the mapped list? Or should a new walk test replace it?",
+      "question": "Q-8",
+      "recommended": 0
+    },
+    {
+      "options": [
+        {
+          "answer": "Keep current behaviour. An empty `in` array sends no param, so all records come back, and a scalar is sent as field=value. Document both in the operator table and pin both with tests.",
+          "confidence": "high",
+          "evidence": [
+            "packages/simple-rest/src/utils/generateFilter.ts:6",
+            "packages/simple-rest/src/provider.ts:123",
+            "packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts:14"
+          ],
+          "if_wrong": "Users who expect 'in []' to return nothing get every record. That is unchanged from today, and now documented.",
+          "why": "`in` is already supported and released (packages/simple-rest/src/utils/generateFilter.ts:6, packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts:14). Values pass to query-string's stringify (packages/simple-rest/src/provider.ts:123-125), which drops []. A cleared multi-select showing all rows is the usual UI expectation, and changing it is out of the ticket's scope."
+        },
+        {
+          "answer": "Throw a clear error when `in` receives an empty array or a non-array value.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts:47"
+          ],
+          "if_wrong": "UIs that clear a multi-select, or pass a single id, start throwing after a minor upgrade, and the RT-1 walk goes red.",
+          "why": "This is stricter, but it changes released `in` behaviour that the RT-1 walk pins with a scalar value (packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts:14,47-51 passes value 10)."
+        }
+      ],
+      "prompt": "For in with an empty array or a non-array value, what should happen? Today [] is dropped by query-string, so no filter is sent and all records come back. A scalar is sent as field=value.",
+      "question": "Q-9",
+      "recommended": 0
+    },
+    {
+      "options": [
+        {
+          "answer": "Add a new '## Filter operators' section with the table to documentation/docs/data/packages/simple-rest/index.md, right after '## URL design'. Leave the README unchanged.",
+          "confidence": "medium",
+          "evidence": [
+            "documentation/docs/data/packages/simple-rest/index.md:45",
+            "packages/simple-rest/README.md:69"
+          ],
+          "if_wrong": "If the reviewer expects the table in the README, the acceptance criterion looks unmet, and adding it is a small follow-up.",
+          "why": "The docs page already carries the URL design table and per-feature sections (documentation/docs/data/packages/simple-rest/index.md:45-57, 112, 129, 152). The README is short and links to the docs page (packages/simple-rest/README.md:69-72)."
+        },
+        {
+          "answer": "Put the table in both the docs page (new section after '## URL design') and packages/simple-rest/README.md, next to the existing '### Pagination total' subsection.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/simple-rest/README.md:65",
+            "documentation/docs/data/packages/simple-rest/index.md:45"
+          ],
+          "if_wrong": "Two tables that disagree later mislead users. The edit to a second file must be in SCOPE or the hook rejects it.",
+          "why": "The README already has a behaviour-detail subsection (packages/simple-rest/README.md:65-67), so there is precedent. But two copies can drift apart, and SCOPE must include both files."
+        }
+      ],
+      "prompt": "Where should the operator support table go: the docs page documentation/docs/data/packages/simple-rest/index.md (new section), the package README packages/simple-rest/README.md, or both?",
+      "question": "Q-10",
+      "recommended": 0
+    }
+  ],
+  "schema": "ai-sdlc.advice.v1",
+  "ticket": "RT-5"
+}
