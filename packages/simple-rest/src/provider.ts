@@ -66,10 +66,7 @@ export const dataProvider = (
   apiUrl: string,
   httpClient: AxiosInstance = axiosInstance,
   options: SimpleRestOptions = {},
-): Omit<
-  Required<DataProvider>,
-  "createMany" | "updateMany" | "deleteMany"
-> => ({
+): Required<DataProvider> => ({
   /**
    * Fetches a list of records.
    *
@@ -224,6 +221,63 @@ export const dataProvider = (
     return {
       data,
     };
+  },
+
+  /**
+   * Sends one request per item in parallel (`Promise.all`). If any request
+   * fails, the call rejects with that error; no partial data is returned.
+   */
+  createMany: async ({ resource, variables, meta }) => {
+    const url = `${apiUrl}/${resource}`;
+
+    const { headers, method } = meta ?? {};
+    const requestMethod = (method as MethodTypesWithBody) ?? "post";
+
+    const data = await Promise.all(
+      variables.map(async (item) => {
+        const response = await httpClient[requestMethod](url, item, {
+          headers,
+        });
+        return response.data;
+      }),
+    );
+
+    return { data };
+  },
+
+  updateMany: async ({ resource, ids, variables, meta }) => {
+    const { headers, method } = meta ?? {};
+    const requestMethod = (method as MethodTypesWithBody) ?? "patch";
+
+    const data = await Promise.all(
+      ids.map(async (id) => {
+        const response = await httpClient[requestMethod](
+          `${apiUrl}/${resource}/${id}`,
+          variables,
+          { headers },
+        );
+        return response.data;
+      }),
+    );
+
+    return { data };
+  },
+
+  deleteMany: async ({ resource, ids, variables, meta }) => {
+    const { headers, method } = meta ?? {};
+    const requestMethod = (method as MethodTypesWithBody) ?? "delete";
+
+    const data = await Promise.all(
+      ids.map(async (id) => {
+        const response = await httpClient[requestMethod](
+          `${apiUrl}/${resource}/${id}`,
+          { data: variables, headers },
+        );
+        return response.data;
+      }),
+    );
+
+    return { data };
   },
 
   getApiUrl: () => {
