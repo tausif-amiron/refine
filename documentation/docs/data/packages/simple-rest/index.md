@@ -55,6 +55,35 @@ The data provider methods are designed to work with REST APIs that follow the st
 | `update`    | `apiUrl` / `resource` / `id` |                                    | `variables`       |
 | `deleteOne` | `apiUrl` / `resource` / `id` |                                    | `data: variables` |
 
+## Filter operators
+
+The table below shows how each `CrudOperators` value is sent. The mappings assume json-server 0.x, where `_like` is a case-insensitive JavaScript regex. json-server 1.x dropped `_like`, so 1.x users need a custom data provider. Unsupported operators throw `[@refinedev/simple-rest]: \`operator: <op>\` is not supported.` instead of sending a wrong filter.
+
+`contains` passes the value to `_like` as a regex, unescaped. `startswith`, `endswith` and `ncontains` escape the value and match it literally. These four operators share the `<field>_like` key, so `startswith`, `endswith` or `ncontains` throws if the same field already has a `_like` filter.
+
+| Operator                                     | Supported | Query produced                                                                                                           |
+| -------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `eq`                                         | Yes       | `field=value`                                                                                                            |
+| `ne`                                         | Yes       | `field_ne=value`                                                                                                         |
+| `gte`                                        | Yes       | `field_gte=value`                                                                                                        |
+| `lte`                                        | Yes       | `field_lte=value`                                                                                                        |
+| `in`                                         | Yes       | `field=1&field=2` (repeated params). An empty array sends no param, so all records return. A scalar sends `field=value`. |
+| `contains`                                   | Yes       | `field_like=value` (raw regex)                                                                                           |
+| `startswith`                                 | Yes       | `field_like=^value` (escaped)                                                                                            |
+| `endswith`                                   | Yes       | `field_like=value$` (escaped)                                                                                            |
+| `ncontains`                                  | Yes       | `field_like=^(?!.*value).*$` (escaped)                                                                                   |
+| `null`, `nnull`                              | No        | Throws. Use a custom data provider.                                                                                      |
+| `gt`, `lt`                                   | No        | Throws                                                                                                                   |
+| `between`, `nbetween`                        | No        | Throws                                                                                                                   |
+| `nin`, `ina`, `nina`                         | No        | Throws                                                                                                                   |
+| `eqs`, `nes`                                 | No        | Throws                                                                                                                   |
+| `containss`, `ncontainss`                    | No        | Throws                                                                                                                   |
+| `nstartswith`, `startswiths`, `nstartswiths` | No        | Throws                                                                                                                   |
+| `nendswith`, `endswiths`, `nendswiths`       | No        | Throws                                                                                                                   |
+| `or`, `and`                                  | No        | Throws                                                                                                                   |
+
+The `q` field is passed through as `q=value` whatever its operator.
+
 ## Default HTTP methods and customizing them
 
 The following table shows the HTTP method used for each data provider method:
