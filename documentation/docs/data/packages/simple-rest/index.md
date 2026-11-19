@@ -126,6 +126,29 @@ dataProvider.getOne({
 controller.abort();
 ```
 
+## Bulk methods
+
+`createMany`, `updateMany` and `deleteMany` are implemented. Each one issues parallel per-item requests (all at once, with `Promise.all`) and resolves to `{ data: [...] }` in the same order as the input.
+
+- `createMany` sends one `POST` to `/{resource}` per item in `variables`.
+- `updateMany` sends one `PATCH` to `/{resource}/{id}` per id, with `variables` as the body.
+- `deleteMany` sends one `DELETE` to `/{resource}/{id}` per id, with `variables` sent as the request `data`.
+
+Like `create`, `update` and `deleteOne`, they support `meta.headers` and `meta.method`: the headers are sent with, and the HTTP method is used for, every per-item request.
+
+```tsx
+const { mutate } = useUpdateMany();
+
+mutate({
+  resource: "posts",
+  ids: [1, 2, 3],
+  values: { status: "published" },
+  meta: { method: "put", headers: { "X-Custom-Header": "value" } },
+});
+```
+
+If one item fails (for example a `404` or `500` for one id), the whole call rejects with that request's error and does not resolve with partial data. Requests for the other items are still sent and may have succeeded on the server. An empty `variables` or `ids` array sends no requests and resolves to `{ data: [] }`.
+
 ## Cursor pagination
 
 When `getList` receives `pagination.mode: "cursor"`, it sends the cursor and the page size as query params instead of `_start` and `_end`. The `cursor` param is left out on the first page. The response `cursor.next` and `cursor.prev` values are read from the `x-next-cursor` and `x-prev-cursor` response headers. `total` is read from `x-total-count` and is `undefined` when that header is missing. Offset mode is unchanged.
