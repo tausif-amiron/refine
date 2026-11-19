@@ -122,6 +122,7 @@
   },
   "jira": {
     "readyStatus": "To Do",
+    "doneOnMerge": true,
     "needsAnswersStatus": "Needs answers",
     "stages": {
       "escalated": "Blocked",
