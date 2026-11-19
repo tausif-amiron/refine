@@ -49,16 +49,19 @@
   "questions": [
     {
       "affects": "What useCreateMany, useUpdateMany and useDeleteMany show the user when one item in a bulk action fails (error notification versus partial success), and what the required partial-failure test asserts.",
+      "answer": "Use plain Promise.all: if any per-item request rejects, the bulk method rejects with that first axios error. On success it resolves `{ data: [...] }` in input order.",
       "if_wrong": "With reject-all, records that were written or deleted on the server look like failures in the UI and are not invalidated, so lists show stale data and users may retry and create duplicates. With resolve-partial, a real failure can be hidden as a success.",
       "q": "On partial failure (some per-item requests succeed and one fails), should createMany, updateMany and deleteMany reject the whole call with the first error (plain Promise.all), or resolve with the items that succeeded and report which ones failed (for example with Promise.allSettled)?"
     },
     {
       "affects": "Which test files and test infrastructure the unit must add, and how QA decides whether that acceptance criterion is met.",
+      "answer": "Prove it with nock-mocked unit tests in packages/simple-rest/test/{createMany,updateMany,deleteMany}/. Add index.mock.ts files that mimic json-server responses for https://api.fake-rest.refine.dev, and register them in test/vitest.setup.ts.",
       "if_wrong": "If a live json-server test is required but only mocks are written, the criterion is unproven at review. If mocks are enough but a live server is set up, the unit adds infrastructure and flaky network tests outside its scope.",
       "q": "The acceptance criterion says 'work against json-server'. Is it enough to prove this with nock-mocked unit tests in packages/simple-rest/test (as the existing create, update and deleteOne tests do against https://api.fake-rest.refine.dev), or is an integration test against a running json-server instance required?"
     },
     {
       "affects": "How many HTTP requests hit the API at once when users bulk-edit or bulk-delete many rows.",
+      "answer": "Use unbounded Promise.all over every id or variable, as the ticket's Scope line says.",
       "if_wrong": "Unbounded parallel requests on large selections can trip rate limits or overload the backend, causing the partial failures described above. Adding a limit when none is wanted makes bulk actions slower and the code more complex than asked.",
       "q": "Should the bulk methods send every per-item request at once (unbounded Promise.all, as the ticket says), or limit how many requests run concurrently for large id lists?"
     }
