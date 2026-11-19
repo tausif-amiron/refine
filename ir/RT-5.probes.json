@@ -1,0 +1,22 @@
+{
+  "probes": [
+    {
+      "ask": "As a new user, check: Docs include an operator support table. Record exactly what the product shows.",
+      "criterion": "AC-1",
+      "id": "P-1"
+    },
+    {
+      "ask": "As a new user, check: Tests for each operator. Record exactly what the product shows.",
+      "criterion": "AC-2",
+      "id": "P-2"
+    },
+    {
+      "ask": "As a new user, check: Changeset added (minor). Depends on: the \"gt/lt silently become equality filters\" bug ticket (unsupported-operator handling). Record exactly what the product shows.",
+      "criterion": "AC-3",
+      "id": "P-3"
+    }
+  ],
+  "schema": "ai-sdlc.probes.v1",
+  "sealed_hash": "sha256:91a45a4f034265021df7ea41cf3906c6deffbd5f49b2d371a449264d171677ef",
+  "ticket": "RT-5"
+}

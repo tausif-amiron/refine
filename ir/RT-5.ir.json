@@ -1,0 +1,116 @@
+{
+  "entities": [],
+  "external_systems": [],
+  "limits": [],
+  "modules": [
+    {
+      "anchor": {
+        "quote": "Map these to json-server query syntax where possible:",
+        "section": "Scope"
+      },
+      "behaviours": [
+        "in: generateFilter([{ field: \"id\", operator: \"in\", value: [1, 2] }]) returns { id: [1, 2] }, and dataProvider(...).getList with that filter requests a URL whose query contains the repeated params id=1&id=2 (no _in suffix, no comma-joined value).",
+        "startswith: a filter { field: \"title\", operator: \"startswith\", value: \"foo\" } produces the key title_like with a regex value that matches only values beginning with the given text (for example \"^foo\"). How the value is escaped depends on the regex-escaping question.",
+        "endswith: a filter { field: \"title\", operator: \"endswith\", value: \"foo\" } produces the key title_like with a regex value that matches only values ending with the given text (for example \"foo$\"). How the value is escaped depends on the regex-escaping question.",
+        "ncontains: a filter { field: \"title\", operator: \"ncontains\", value: \"foo\" } produces the key title_like with a regex value that matches only values NOT containing the given text (for example a negative lookahead \"^(?!.*foo).*$\"), or throws the descriptive error if the ncontains question is answered 'throw'.",
+        "null / nnull: either map to a json-server query that selects records whose field is null / not null, or throw an Error whose message starts with \"[@refinedev/simple-rest]: `operator: null` is not supported.\" (respectively `operator: nnull`). Which one applies depends on the null/nnull feasibility question.",
+        "Each operator named in the ticket (in, startswith, endswith, ncontains, null, nnull) has at least one unit test that checks the exact query key and value produced, or the exact error thrown.",
+        "Operators that cannot be expressed in json-server query syntax still throw an Error with the existing message \"[@refinedev/simple-rest]: `operator: <op>` is not supported. You can create custom data provider. https://refine.dev/docs/api-reference/core/providers/data-provider/#creating-a-data-provider\". For example gt, lt, between, nbetween, nin and the case-sensitive variants keep throwing unless a question answer adds them.",
+        "The RT-1 walk test packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts currently checks that ncontains, startswith, endswith, null and nnull throw. Any operator from that list that this ticket now maps is moved from the 'unsupported' list to the mapped list, with its new key and value. Every other entry is unchanged.",
+        "Unchanged: eq maps to field=value; ne, gte, lte map to _ne, _gte, _lte; contains maps to _like with the raw value. For example generateFilter([{ field: \"age\", operator: \"gte\", value: 25 }]) returns { age_gte: 25 }.",
+        "Unchanged: or and and filters throw the exact existing message; the q field passes through as q=value whatever its operator; a missing operator acts as eq; an empty-string or unknown operator throws; generateFilter() with no filters returns {}.",
+        "Unchanged: mapOperator keeps its exported signature (operator: CrudOperators) => string, and mapOperator(\"eq\") returns \"\".",
+        "The simple-rest docs page documentation/docs/data/packages/simple-rest/index.md has an operator support table. It lists every CrudOperators value and shows, for each one, whether it is supported and the json-server query it produces, or that it throws.",
+        "A changeset file in .changeset/ marks \"@refinedev/simple-rest\" for a minor release and describes the newly supported filter operators."
+      ],
+      "files": [
+        "packages/simple-rest/src/utils/mapOperator.ts",
+        "packages/simple-rest/src/utils/generateFilter.ts",
+        "documentation/docs/data/packages/simple-rest/index.md",
+        ".changeset/simple-rest-more-filter-operators.md"
+      ],
+      "name": "simple-rest extra filter operators",
+      "tests": [
+        "packages/simple-rest/test/utils/mapOperator.spec.ts",
+        "packages/simple-rest/test/utils/generateFilter.spec.ts",
+        "packages/simple-rest/test/getList/index.spec.ts",
+        "packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts"
+      ]
+    }
+  ],
+  "questions": [
+    {
+      "affects": "The query string getList, getMany and custom send for startswith, endswith, ncontains, null and nnull, and what the docs operator table says.",
+      "if_wrong": "If we target the wrong version, the backend ignores the `_like` params and the filter is silently dropped. Users then get unfiltered results, which is the bug class RT-1 fixed.",
+      "q": "Which json-server version should the new mappings target? simple-rest is documented against json-server 0.x (where `_like` is a case-insensitive regex and `_ne/_gte/_lte` are suffixes). json-server 1.x dropped `_like` and uses a different operator syntax. Should the mappings assume 0.x only?"
+    },
+    {
+      "affects": "Which records match when filter values contain regex characters (. * + ? ( ) [ ] ^ $ |). It also decides whether contains changes behaviour.",
+      "if_wrong": "Without escaping, values like \"c++\" or \"(draft)\" give wrong matches or an invalid regex that errors on the server. If we escape contains as well, existing apps that rely on regex in contains break inside a minor release.",
+      "q": "Should the user's value be regex-escaped before it is wrapped for startswith, endswith and ncontains? For example, should startswith \"a.b\" send title_like=^a\\.b or title_like=^a.b? And should contains keep passing the raw value as it does today, even though that is inconsistent?"
+    },
+    {
+      "affects": "Whether ncontains is listed as supported in the docs table, and the query it sends.",
+      "if_wrong": "If we map it but the target server's regex engine or `_like` handling does not support lookahead, the filter silently returns wrong rows. If we throw, apps lose a filter that could have worked.",
+      "q": "For ncontains, should we use a negative-lookahead regex in _like (for example ^(?!.*foo).*$), or throw the unsupported error because json-server has no native 'not like' operator?"
+    },
+    {
+      "affects": "Whether null/nnull filters work or throw in getList, and the row for them in the docs table.",
+      "if_wrong": "A mapping like field=null may compare against the string \"null\" and silently return no rows or the wrong rows. Throwing when a mapping works removes a usable feature.",
+      "q": "The ticket says null / nnull need a feasibility check. json-server 0.x has no documented way to filter on null or missing fields. Should null and nnull throw the standard unsupported error? Or is there an accepted mapping, for example field=null, or field_ne= with an empty value?"
+    },
+    {
+      "affects": "Filters that combine contains/startswith/endswith/ncontains on one field, for example in a table with several filter inputs.",
+      "if_wrong": "If we overwrite silently, one filter is dropped without warning and users get wrong results. Combining or repeating params may not be supported by the backend.",
+      "q": "Several operators now share the `<field>_like` key (contains, startswith, endswith, ncontains). generateFilter returns a plain object, so two such filters on the same field overwrite each other, and only the last one is sent. Should a second `_like` filter on the same field throw, be combined into one regex, or be sent as repeated _like params?"
+    },
+    {
+      "affects": "Which operators the docs table lists as supported, and which filters throw versus match.",
+      "if_wrong": "If case handling does not match refine's operator semantics, filters return too many or too few rows. Adding extra operators the ticket did not ask for widens the scope and the minor release surface.",
+      "q": "Should the json-server _like regex for startswith/endswith be case-insensitive, matching refine's startswith/endswith semantics, or case-sensitive? Should the case-sensitive variants (startswiths, endswiths, containss) and the negated forms (nstartswith, nendswith and their -s variants) also be added, or keep throwing?"
+    },
+    {
+      "affects": "The public mapOperator API used by custom providers, and the existing assertions in packages/simple-rest/test/utils/mapOperator.spec.ts that pin \"\" for these operators.",
+      "if_wrong": "If mapOperator returns \"_like\" but callers use it without the regex transform, they get a plain contains filter for startswith. If it stays \"\", external callers still get an equality filter for these operators.",
+      "q": "Should mapOperator (publicly exported from @refinedev/simple-rest) return the new suffix (\"_like\") for startswith, endswith and ncontains, while generateFilter builds the regex value? Or should mapOperator stay as it is (returning \"\" for these) and all new logic live in generateFilter?"
+    },
+    {
+      "affects": "Whether the existing test suite stays green after the change, and which unit owns that file.",
+      "if_wrong": "If the file may not be edited, the new behaviour makes an existing test red and the build fails. If it is edited carelessly, RT-1's guarantees (gt/lt never become equality) lose their coverage.",
+      "q": "The RT-1 walk test packages/simple-rest/test/walk/unsupported-operators.walk.spec.ts asserts that ncontains, startswith, endswith, null and nnull throw. May this ticket's unit edit that walk test to move newly supported operators to the mapped list? Or should a new walk test replace it?"
+    },
+    {
+      "affects": "getList results when an 'in' filter has no selected values, for example a multi-select filter that has been cleared.",
+      "if_wrong": "If an empty in returns every record, the user may expect none, or the reverse. Throwing could break UIs that clear the selection.",
+      "q": "For in with an empty array or a non-array value, what should happen? Today [] is dropped by query-string, so no filter is sent and all records come back. A scalar is sent as field=value."
+    },
+    {
+      "affects": "Which docs file the unit edits, and where users find the table.",
+      "if_wrong": "If the table goes in the wrong place, the acceptance criterion may be judged unmet, or a file outside the expected scope gets edited.",
+      "q": "Where should the operator support table go: the docs page documentation/docs/data/packages/simple-rest/index.md (new section), the package README packages/simple-rest/README.md, or both?"
+    }
+  ],
+  "roles": [],
+  "schema": "ai-sdlc.ir.v1",
+  "screens": [],
+  "sealed_acceptance_criteria": [
+    {
+      "id": "AC-1",
+      "text": "Docs include an operator support table."
+    },
+    {
+      "id": "AC-2",
+      "text": "Tests for each operator."
+    },
+    {
+      "id": "AC-3",
+      "text": "Changeset added (minor). Depends on: the \"gt/lt silently become equality filters\" bug ticket (unsupported-operator handling)."
+    }
+  ],
+  "sealed_hash": "sha256:91a45a4f034265021df7ea41cf3906c6deffbd5f49b2d371a449264d171677ef",
+  "services": [],
+  "ticket": "RT-5",
+  "ticket_hash": "sha256:d4ead191e919ecd2aa637f0d2f3114d61de316722a92e4022db1a04b1df58c3b",
+  "title": "[Feature] simple-rest: support more filter operators (in, ncontains, startswith, endswith, null)",
+  "unplaced": []
+}
