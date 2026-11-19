@@ -1,0 +1,129 @@
+{
+  "questions": [
+    {
+      "options": [
+        {
+          "answer": "Use plain Promise.all: if any per-item request rejects, the bulk method rejects with that first axios error. On success it resolves `{ data: [...] }` in input order.",
+          "confidence": "high",
+          "evidence": [
+            "packages/core/src/definitions/helpers/handleMultiple/index.ts:5",
+            "packages/core/src/hooks/data/useCreateMany.ts:142",
+            "packages/core/src/hooks/data/useUpdateMany.ts:250",
+            "packages/core/src/hooks/data/useDeleteMany.ts:205",
+            "packages/core/src/contexts/data/types.ts:345",
+            "packages/appwrite/src/dataProvider.ts:120",
+            "packages/medusa/src/dataProvider/index.ts:71",
+            "packages/strapi-v4/src/dataProvider.ts:140"
+          ],
+          "if_wrong": "Items that did succeed are reported as an error. The list is invalidated only in onSuccess (packages/core/src/hooks/data/useCreateMany.ts:203), so it can show stale data until the next refetch, and a user who retries can create duplicates. This is already true today, so it is not a regression.",
+          "why": "This keeps today's behaviour. Without these methods, core falls back to `handleMultiple`, which is a plain `Promise.all` (packages/core/src/definitions/helpers/handleMultiple/index.ts:5). That fallback is called from useCreateMany, useUpdateMany and useDeleteMany. So users already get reject-all today, and the ticket's own Scope line says Promise.all. The response types have only a `data` array and no field for errors (packages/core/src/contexts/data/types.ts:345-371), so a partial result cannot be expressed without changing core types. Every sibling provider that implements these methods uses Promise.all: appwrite, medusa, strapi-v4 and nestjsx-crud. The partial-failure test then asserts that the call rejects with the failing item's error."
+        },
+        {
+          "answer": "Use Promise.allSettled and always resolve `{ data: [...fulfilled items] }`, dropping or logging the items that failed. Assert in the test that only the successful items are returned.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/core/src/contexts/data/types.ts:345",
+            "packages/core/src/hooks/data/useCreateMany.ts:190",
+            "packages/core/src/hooks/data/useUpdateMany.ts:634"
+          ],
+          "if_wrong": "Real failures are hidden: users see 'Successfully created' while some rows were never written. It also changes behaviour silently compared with the current core fallback.",
+          "why": "This would invalidate the list and show the records that were written. But the return types allow only `data: TData[]` (packages/core/src/contexts/data/types.ts:345-371), so the failures cannot reach the hook. useUpdateMany's error notification (packages/core/src/hooks/data/useUpdateMany.ts:634) would never fire, and the success notification would claim every item worked. Nothing in the ticket asks for partial-success semantics."
+        },
+        {
+          "answer": "Use Promise.allSettled, then reject if any item failed, with an error that carries the first failure's `message`/`statusCode` plus the failed ids or indexes, after every request has settled.",
+          "confidence": "low",
+          "evidence": [
+            "packages/core/src/definitions/helpers/handleMultiple/index.ts:5",
+            "packages/core/src/hooks/data/useCreateMany.ts:262"
+          ],
+          "if_wrong": "It adds an error-shape contract that has to be documented and maintained but gives the user nothing in the default UI. If the error is built carelessly it can drop `statusCode`, which would break the existing notification text.",
+          "why": "The call still rejects, as the fallback does today (packages/core/src/definitions/helpers/handleMultiple/index.ts:5), so the hooks' error path is unchanged. It also tells callers which items failed and waits for in-flight requests before reporting. The cost is a custom error shape that no other refine provider uses, and the hooks read only `err.message` and `err.statusCode` (packages/core/src/hooks/data/useCreateMany.ts:262-267), so the extra ids are visible only through custom errorNotification or onError callbacks."
+        }
+      ],
+      "prompt": "On partial failure (some per-item requests succeed and one fails), should createMany, updateMany and deleteMany reject the whole call with the first error (plain Promise.all), or resolve with the items that succeeded and report which ones failed (for example with Promise.allSettled)?",
+      "question": "Q-1",
+      "recommended": 0
+    },
+    {
+      "options": [
+        {
+          "answer": "Prove it with nock-mocked unit tests in packages/simple-rest/test/{createMany,updateMany,deleteMany}/. Add index.mock.ts files that mimic json-server responses for https://api.fake-rest.refine.dev, and register them in test/vitest.setup.ts.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/simple-rest/test/vitest.setup.ts:14",
+            "packages/simple-rest/test/update/index.spec.ts:7",
+            "ai-sdlc.config.json:89",
+            "docs/TESTING.md:67"
+          ],
+          "if_wrong": "A reviewer who reads 'work against json-server' literally finds the criterion unproven. Mocks can also encode the wrong response shapes, for example what json-server returns from DELETE.",
+          "why": "Every existing method test works this way. For example, test/update/index.spec.ts:7-10 calls the provider against api.fake-rest.refine.dev, and test/vitest.setup.ts:6-14 imports the mocks and calls `nock.disableNetConnect()`, so live requests are blocked in this suite. The workflow config has no integration check (ai-sdlc.config.json:89, `\"integration\": []`), and docs/TESTING.md:67 says QA then runs only the contract check. A live json-server test would therefore not be run by any gate."
+        },
+        {
+          "answer": "Add an integration test that starts a local json-server with a fixture db and runs the three methods against it, in addition to the unit tests.",
+          "confidence": "low",
+          "evidence": [
+            "packages/simple-rest/test/vitest.setup.ts:14",
+            "ai-sdlc.config.json:89"
+          ],
+          "if_wrong": "It adds test infrastructure, a new dependency and a possibly flaky server lifecycle outside the unit's SCOPE. That work belongs in owed.yaml.",
+          "why": "This proves the acceptance criterion literally. But nothing in the package starts json-server today, `nock.disableNetConnect()` (packages/simple-rest/test/vitest.setup.ts:14) would block localhost unless it is explicitly allowed, and `checks.integration` is empty (ai-sdlc.config.json:89), so you would have to add a new check outside this unit's scope."
+        },
+        {
+          "answer": "Use nock unit tests for the unit, and record a separate owed.yaml entry for a json-server integration check, so QA knows the live criterion is deferred.",
+          "confidence": "medium",
+          "evidence": [
+            "packages/simple-rest/test/vitest.setup.ts:14",
+            "docs/TESTING.md:67",
+            "ai-sdlc.config.json:89"
+          ],
+          "if_wrong": "If the ticket author really requires live proof before merging, the ticket stays open until the owed item is done.",
+          "why": "This keeps the unit inside the existing test pattern (packages/simple-rest/test/vitest.setup.ts:14) and makes the gap explicit rather than silent, as the project rules require for work outside SCOPE. QA is already told to report when only the contract check ran (docs/TESTING.md:67)."
+        }
+      ],
+      "prompt": "The acceptance criterion says 'work against json-server'. Is it enough to prove this with nock-mocked unit tests in packages/simple-rest/test (as the existing create, update and deleteOne tests do against https://api.fake-rest.refine.dev), or is an integration test against a running json-server instance required?",
+      "question": "Q-2",
+      "recommended": 0
+    },
+    {
+      "options": [
+        {
+          "answer": "Use unbounded Promise.all over every id or variable, as the ticket's Scope line says.",
+          "confidence": "high",
+          "evidence": [
+            "packages/core/src/definitions/helpers/handleMultiple/index.ts:5",
+            "packages/appwrite/src/dataProvider.ts:146",
+            "packages/nestjsx-crud/src/provider.ts:161",
+            "packages/strapi-v4/src/dataProvider.ts:228"
+          ],
+          "if_wrong": "Very large selections can hit rate limits or overload the backend, which causes partial failures. The risk exists today and is unchanged.",
+          "why": "This matches the current behaviour: the core fallback already fires every request at once (packages/core/src/definitions/helpers/handleMultiple/index.ts:5). It also matches every sibling provider that implements these methods: appwrite, medusa, strapi-v4 and nestjsx-crud. Users get no more concurrent load than they get today."
+        },
+        {
+          "answer": "Cap concurrency at a fixed number, for example 5–10 in flight, using a small in-file worker pool. No new public option.",
+          "confidence": "low",
+          "evidence": [
+            "packages/core/src/definitions/helpers/handleMultiple/index.ts:5",
+            "packages/simple-rest/src/provider.ts:65"
+          ],
+          "if_wrong": "Bulk actions get slower with no request for it, and the code grows beyond what the ticket scoped. Any fixed number chosen is arbitrary.",
+          "why": "This protects backends on large bulk actions. But nothing in the repo asks for it, no sibling provider does it, and it changes timing compared with today's fallback (packages/core/src/definitions/helpers/handleMultiple/index.ts:5). It also needs extra tests, using fake timers per .claude/rules/tests.md."
+        },
+        {
+          "answer": "Add an optional `SimpleRestOptions.concurrency` (default unlimited), applied to the three bulk methods.",
+          "confidence": "low",
+          "evidence": [
+            "packages/simple-rest/src/provider.ts:54",
+            "packages/simple-rest/src/provider.ts:68"
+          ],
+          "if_wrong": "It adds a public option that becomes a compatibility commitment, for a problem nobody has reported.",
+          "why": "The default is unchanged, and the existing `options` parameter (packages/simple-rest/src/provider.ts:54-56, 68) is already a place to put it. But this adds public API surface the ticket did not ask for, which then needs docs, tests and the changeset to cover it."
+        }
+      ],
+      "prompt": "Should the bulk methods send every per-item request at once (unbounded Promise.all, as the ticket says), or limit how many requests run concurrently for large id lists?",
+      "question": "Q-3",
+      "recommended": 0
+    }
+  ],
+  "schema": "ai-sdlc.advice.v1",
+  "ticket": "RT-4"
+}
